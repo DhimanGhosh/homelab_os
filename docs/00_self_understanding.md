@@ -69,15 +69,18 @@ Because CLI and UI share the same install state, a CLI-installed bundle should a
 6. Remove an installed app from CLI
 source .venv/bin/activate
 homelabctl remove-app --app-id dictionary --env-file .env
+
 7. Trigger the integrated recovery from CLI
 
 If CC/Pi-hole/Caddy/DNS gets disturbed:
 
 source .venv/bin/activate
 homelabctl recover-stack --env-file .env
+
 8. Check framework settings from CLI
 source .venv/bin/activate
 homelabctl show-settings --env-file .env
+
 9. List built bundles from CLI
 source .venv/bin/activate
 homelabctl list-bundles --env-file .env
