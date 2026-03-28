@@ -1,0 +1,9 @@
+{
+  "id": "api-gateway",
+  "name": "API Gateway",
+  "version": "1.3.0",
+  "port": 8456,
+  "open_path": "/docs",
+  "health_url": "http://127.0.0.1:8134/api/health",
+  "local_upstream": "http://127.0.0.1:8134"
+}

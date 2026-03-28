@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Secrets / local config
+.env
+.env.*
+*.pem
+*.key
+*.crt
+secrets/
+tokens/
+*.token
+
+# Build / artifacts
+dist/
+build/
+*.tgz
+*.zip
+*.tar.gz
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Runtime / generated homelab data
+runtime/
+tmp/
+.cache/
+
+# NAS / deployed app state
+mnt/
+backups/

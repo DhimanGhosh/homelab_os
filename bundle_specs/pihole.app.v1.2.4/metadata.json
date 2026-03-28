@@ -1,0 +1,9 @@
+{
+  "id": "pihole",
+  "name": "Pi-hole",
+  "version": "1.2.4",
+  "port": 8447,
+  "open_path": "/admin/",
+  "health_url": "http://127.0.0.1:8080/admin/",
+  "local_upstream": "http://127.0.0.1:8080"
+}

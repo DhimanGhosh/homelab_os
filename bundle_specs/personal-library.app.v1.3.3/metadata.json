@@ -1,0 +1,10 @@
+{
+  "id": "personal-library",
+  "name": "Personal Library",
+  "version": "1.3.3",
+  "port": 8454,
+  "open_path": "/",
+  "health_url": "http://127.0.0.1:8132/api/health",
+  "local_upstream": "127.0.0.1:8132",
+  "health_timeout": 60
+}

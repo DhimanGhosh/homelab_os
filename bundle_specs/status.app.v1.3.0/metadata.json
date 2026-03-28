@@ -1,0 +1,9 @@
+{
+  "id": "status",
+  "name": "Pi Status Board",
+  "version": "1.3.0",
+  "port": 8451,
+  "open_path": "/",
+  "health_url": "http://127.0.0.1:8131/api/health",
+  "local_upstream": "http://127.0.0.1:8131"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "homarr",
+  "name": "Homarr",
+  "version": "1.1.0",
+  "port": 8453,
+  "open_path": "/",
+  "health_url": "http://127.0.0.1:7575/",
+  "local_upstream": "http://127.0.0.1:7575",
+  "requires_api_endpoint_update": true
+}

@@ -1,0 +1,10 @@
+{
+  "id": "files",
+  "name": "Files",
+  "version": "1.3.0",
+  "port": 8449,
+  "open_path": "/files/Incoming/",
+  "health_url": "http://127.0.0.1:8088/",
+  "local_upstream": "http://127.0.0.1:8088",
+  "description": "Installs File Browser for /mnt/nas, opens directly to Incoming, and auto-sorts audio/video into Navidrome/Jellyfin libraries."
+}

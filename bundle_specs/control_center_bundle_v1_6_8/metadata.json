@@ -1,0 +1,10 @@
+{
+  "id": "control-center",
+  "name": "Pi Control Center",
+  "version": "1.6.8",
+  "port": 8444,
+  "open_path": "/",
+  "local_upstream": "127.0.0.1:9000",
+  "health_url": "http://127.0.0.1:9000/api/health",
+  "health_timeout": 60
+}
