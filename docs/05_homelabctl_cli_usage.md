@@ -7,7 +7,7 @@ This guide explains every `homelabctl` command in the current framework, what it
 `homelabctl` is the Typer-based command line entrypoint defined in:
 
 ```text
-homelab_py/cli.py
+homelab_platform/cli.py
 ```
 
 It is installed from `pyproject.toml` as a console script. After bootstrap and editable install, you run it like:
@@ -52,8 +52,8 @@ It calls:
 Defined in:
 
 ```text
-homelab_py/cli.py
-homelab_py/services/bootstrap.py
+homelab_platform/cli.py
+homelab_platform/services/bootstrap.py
 ```
 
 #### What it does
@@ -88,13 +88,13 @@ Starts the Flask Control Center app directly in the foreground using Waitress.
 Defined in:
 
 ```text
-homelab_py/cli.py
-homelab_py/web.py
+homelab_platform/cli.py
+homelab_platform/web.py
 ```
 
 #### What it does
 - exports `HOMELAB_ENV_FILE`
-- imports `homelab_py.web`
+- imports `homelab_platform.web`
 - loads settings from that env file
 - starts Waitress on `control_center_bind:control_center_port`
 
@@ -127,8 +127,8 @@ Installs one bundle file by CLI.
 Defined in:
 
 ```text
-homelab_py/cli.py
-homelab_py/services/bundle_installer.py
+homelab_platform/cli.py
+homelab_platform/services/bundle_installer.py
 ```
 
 #### Accepted bundle types
@@ -169,8 +169,8 @@ Uninstalls an installed app by app id.
 Defined in:
 
 ```text
-homelab_py/cli.py
-homelab_py/services/bundle_installer.py
+homelab_platform/cli.py
+homelab_platform/services/bundle_installer.py
 ```
 
 #### Example
@@ -201,8 +201,8 @@ Builds one `.tgz` bundle from one source directory.
 Defined in:
 
 ```text
-homelab_py/cli.py
-homelab_py/services/bundle_builder.py
+homelab_platform/cli.py
+homelab_platform/services/bundle_builder.py
 ```
 
 #### Example
@@ -231,7 +231,7 @@ Builds all bundle source directories found inside `bundle_specs/`.
 Defined in:
 
 ```text
-homelab_py/cli.py
+homelab_platform/cli.py
 ```
 
 #### Example
@@ -271,7 +271,7 @@ dist/<source-folder-name>.tgz
 
 ### Workflow A: Edit one app and rebuild one OTA bundle
 ```bash
-cd pi_homelab_python_ota_framework_v2_real_bundles
+cd pi_homelab_platformthon_ota_framework_v2_real_bundles
 source .venv/bin/activate
 nano bundle_specs/dictionary.app.v1.4.5/Dockerfile
 homelabctl build-bundle \
@@ -289,21 +289,21 @@ homelabctl install-bundle --bundle dist/dictionary.app.v1.4.5.tgz --env-file .en
 
 ### Workflow B: Rebuild all OTA packages
 ```bash
-cd pi_homelab_python_ota_framework_v2_real_bundles
+cd pi_homelab_platformthon_ota_framework_v2_real_bundles
 source .venv/bin/activate
 homelabctl build-all-bundles --env-file .env
 ```
 
 ### Workflow C: Run local CC for development
 ```bash
-cd pi_homelab_python_ota_framework_v2_real_bundles
+cd pi_homelab_platformthon_ota_framework_v2_real_bundles
 source .venv/bin/activate
 homelabctl run-control-center --env-file .env
 ```
 
 ### Workflow D: First host setup on a fresh Pi
 ```bash
-cd pi_homelab_python_ota_framework_v2_real_bundles
+cd pi_homelab_platformthon_ota_framework_v2_real_bundles
 python3 bootstrap.py
 source .venv/bin/activate
 homelabctl bootstrap-host --env-file .env

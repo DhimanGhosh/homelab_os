@@ -42,7 +42,7 @@ So UI and CLI converge at the same installer service.
 
 ## Step-by-step file flow
 
-## 1. `homelab_py/cli.py`
+## 1. `homelab_platform/cli.py`
 This is the CLI entrypoint.
 
 Example command:
@@ -69,7 +69,7 @@ So by the time `BundleInstaller.install(...)` is called, it already has:
 
 ---
 
-## 2. `homelab_py/web.py`
+## 2. `homelab_platform/web.py`
 This is the Flask Control Center.
 
 ### Upload route
@@ -106,7 +106,7 @@ So the web app loads settings once from the env file pointed to by `HOMELAB_ENV_
 
 ---
 
-## 3. `homelab_py/config.py`
+## 3. `homelab_platform/config.py`
 This is where `Settings` values come from.
 
 ### Flow
@@ -140,7 +140,7 @@ These are then passed into bundle installers.
 
 ---
 
-## 4. `homelab_py/services/bundle_installer.py`
+## 4. `homelab_platform/services/bundle_installer.py`
 This is the main dispatcher.
 
 ### Method: `install(bundle_path)`
@@ -273,7 +273,7 @@ This file defines the per-app install behavior.
 ### Minimal generic bundle
 
 ```python
-from homelab_py.services.bundle_runtime import generic_docker_install, generic_docker_uninstall
+from homelab_platform.services.bundle_runtime import generic_docker_install, generic_docker_uninstall
 
 def install(settings, extracted, meta):
     return generic_docker_install(settings, extracted, meta)
@@ -301,7 +301,7 @@ Use custom logic if an app needs special behavior, for example:
 
 ---
 
-## 7. `homelab_py/services/bundle_runtime.py`
+## 7. `homelab_platform/services/bundle_runtime.py`
 This is the shared install engine used by many bundle.py files.
 
 ### Function: `generic_docker_install(settings, extracted, meta, extra_dirs=None)`
@@ -413,7 +413,7 @@ Control Center is special because it is both:
 
 ### Runtime serving path
 If running from systemd:
-- systemd executes `python -m homelab_py.web`
+- systemd executes `python -m homelab_platform.web`
 - Flask app starts via Waitress
 - UI becomes available on port 8444
 
@@ -432,7 +432,7 @@ This is different from generic apps, which normally just use `generic_docker_ins
 
 ### Problem: wrong app URLs in UI
 Check:
-- `homelab_py/web.py`
+- `homelab_platform/web.py`
 - `KNOWN_APPS`
 - `.env`
 

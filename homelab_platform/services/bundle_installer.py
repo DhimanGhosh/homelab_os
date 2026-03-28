@@ -3,16 +3,24 @@ import tarfile
 import tempfile
 import types
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from homelab_platform.services.health import docker_is_healthy
 from homelab_platform.services.recovery import recover_stack
-from homelab_platform.services.state import load_installed_apps
+from homelab_platform.services.state import load_installed_apps, mark_install_attempt, mark_install_failure
 
 
 class BundleInstaller:
     def __init__(self, settings):
         self.settings = settings
+
+    def _make_log_path(self, app_id: str | None) -> Path:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        logs_root = self.settings.logs_dir / "installs"
+        logs_root.mkdir(parents=True, exist_ok=True)
+        safe = app_id or "unknown"
+        return logs_root / f"{safe}_{stamp}.log"
 
     def extract_bundle(self, bundle_path: Path) -> Path:
         temp_dir = Path(tempfile.mkdtemp(prefix="ccbundle-"))
@@ -61,7 +69,17 @@ class BundleInstaller:
             raise RuntimeError("Docker unstable — recovery triggered. Retry install.")
         extracted = self.extract_bundle(bundle_path)
         meta = self.load_metadata(extracted)
-        return self._run_python_bundle(extracted, meta, "install")
+        log_path = self._make_log_path(meta.get("id"))
+        meta["_log_path"] = str(log_path)
+        mark_install_attempt(self.settings.apps_dir, meta["id"], meta, str(log_path))
+        try:
+            result = self._run_python_bundle(extracted, meta, "install")
+            if isinstance(result, dict):
+                result.setdefault("log_path", str(log_path))
+            return result
+        except Exception as exc:
+            mark_install_failure(self.settings.apps_dir, meta["id"], meta, str(exc), str(log_path))
+            raise RuntimeError(f"Install failed for {meta['id']}: {exc}\nDetailed log: {log_path}") from None
 
     def remove_app(self, app_id: str):
         bundle_dir = self.settings.apps_dir / app_id / "bundle"

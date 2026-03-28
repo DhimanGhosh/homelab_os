@@ -1,6 +1,6 @@
 # Project Structure
 
-- `homelab_py/` framework source
+- `homelab_platform/` framework source
 - `bundle_specs/` source-of-truth for all bundle code
 - `dist/` built `.tgz` bundles
 - `recovery/self_recovery_v3_2/` infrastructure recovery pack

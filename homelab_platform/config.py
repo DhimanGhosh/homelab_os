@@ -28,6 +28,7 @@ class Settings:
     dist_dir: Path
     bundle_specs_dir: Path
     backups_dir: Path
+    logs_dir: Path
     docker_root_dir: Path
     docker_daemon_json: Path
     control_center_bind: str
@@ -77,6 +78,7 @@ class Settings:
             dist_dir=p("DIST_DIR", "dist"),
             bundle_specs_dir=p("BUNDLE_SPECS_DIR", "bundle_specs"),
             backups_dir=p("BACKUPS_DIR", "/mnt/nas/homelab/backups"),
+            logs_dir=p("LOGS_DIR", "/mnt/nas/homelab/logs"),
             docker_root_dir=p("DOCKER_ROOT_DIR", "/mnt/nas/homelab/docker"),
             docker_daemon_json=p("DOCKER_DAEMON_JSON", "/etc/docker/daemon.json"),
             control_center_bind=data.get("CONTROL_CENTER_BIND", "127.0.0.1"),

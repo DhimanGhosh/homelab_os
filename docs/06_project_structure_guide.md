@@ -1,11 +1,11 @@
 # Full Project Structure Guide
 
-This document explains the main folders and files in `pi_homelab_python_ota_framework_v2_real_bundles`, what each one is for, and when you should edit it.
+This document explains the main folders and files in `raspi_homelab_python_framework`, what each one is for, and when you should edit it.
 
 ## Top-level layout
 
 ```text
-pi_homelab_python_ota_framework_v2_real_bundles/
+raspi_homelab_python_framework/
 ├── .env.example
 ├── README.md
 ├── bootstrap.py
@@ -13,7 +13,7 @@ pi_homelab_python_ota_framework_v2_real_bundles/
 ├── bundle_specs/
 ├── dist/
 ├── docs/
-├── homelab_py/
+├── homelab_platform/
 └── reference_uploads/
 ```
 
@@ -60,11 +60,11 @@ Important because it:
 
 ---
 
-## `homelab_py/`
+## `homelab_platform/`
 This is the framework code.
 
 ```text
-homelab_py/
+homelab_platform/
 ├── __init__.py
 ├── cli.py
 ├── config.py
@@ -74,7 +74,7 @@ homelab_py/
 └── templates/
 ```
 
-### `homelab_py/cli.py`
+### `homelab_platform/cli.py`
 Defines all `homelabctl` commands.
 
 Edit this when you want to:
@@ -82,7 +82,7 @@ Edit this when you want to:
 - change CLI options
 - change how commands connect to services
 
-### `homelab_py/config.py`
+### `homelab_platform/config.py`
 Loads `.env` values into a `Settings` object.
 
 Edit this when you want to:
@@ -90,7 +90,7 @@ Edit this when you want to:
 - change default values
 - expose more paths/ports to bundles
 
-### `homelab_py/web.py`
+### `homelab_platform/web.py`
 Flask Control Center backend.
 
 Handles:
@@ -107,17 +107,17 @@ Edit this when you want to:
 - change version detection
 - change open URL logic
 
-### `homelab_py/static/`
+### `homelab_platform/static/`
 CSS, JS, images, client-side assets for Control Center.
 
-### `homelab_py/templates/`
+### `homelab_platform/templates/`
 Jinja templates for Flask pages.
 
 Usually the main dashboard template lives here.
 
 ---
 
-## `homelab_py/services/`
+## `homelab_platform/services/`
 Service layer for the framework.
 
 ### `bootstrap.py`
@@ -327,9 +327,9 @@ Tailscale certificate files used by Caddy.
 
 ### Change CC UI
 Edit:
-- `homelab_py/web.py`
-- `homelab_py/templates/`
-- `homelab_py/static/`
+- `homelab_platform/web.py`
+- `homelab_platform/templates/`
+- `homelab_platform/static/`
 
 ### Change one app’s install logic
 Edit:
@@ -338,20 +338,20 @@ Edit:
 
 ### Change common Docker install behavior for many apps
 Edit:
-- `homelab_py/services/bundle_runtime.py`
+- `homelab_platform/services/bundle_runtime.py`
 
 ### Change CLI behavior
 Edit:
-- `homelab_py/cli.py`
+- `homelab_platform/cli.py`
 
 ### Change config variables or defaults
 Edit:
-- `homelab_py/config.py`
+- `homelab_platform/config.py`
 - `.env.example`
 
 ### Change system bootstrap logic
 Edit:
-- `homelab_py/services/bootstrap.py`
+- `homelab_platform/services/bootstrap.py`
 
 ---
 

@@ -85,7 +85,7 @@ Practical workflow you should follow
 
 For changing an app:
 
-cd ~/raspi_homelab_python_platform
+cd ~/raspi_homelab_python_framework
 source .venv/bin/activate
 
 # edit files
@@ -103,7 +103,7 @@ homelabctl install-bundle --bundle dist/dictionary.app.v1.4.5.tgz --env-file .en
 
 For changing CC:
 
-cd ~/raspi_homelab_python_platform
+cd ~/raspi_homelab_python_framework
 source .venv/bin/activate
 
 nano homelab_platform/web.py

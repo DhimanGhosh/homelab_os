@@ -1,10 +1,9 @@
-# raspi_homelab_python_framework v3 stable
+# raspi_homelab_platformthon_framework v3 stable
 
 This is a clean fixed framework snapshot meant to make `homelabctl` work for host bootstrap, bundle build, and bundle install.
 
 ## Included fixes
 
-- bundle imports always target `homelab_platform`, never `homelab_py`
 - `bundle.py` files that were stored with literal `\n` are auto-normalized
 - `Settings` now includes `backups_dir`
 - runtime install validates `runtime/docker-compose.yml`
@@ -16,10 +15,7 @@ This is a clean fixed framework snapshot meant to make `homelabctl` work for hos
 ## Recommended steps
 
 ```bash
-cd ~
-mv raspi_homelab_python_framework raspi_homelab_python_framework_old_$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
-unzip raspi_homelab_python_framework_v3_stable.zip -d ~
-cd ~/raspi_homelab_python_framework_v3_stable
+cd ~/raspi_homelab_platformthon_framework
 python3 bootstrap.py
 source .venv/bin/activate
 homelabctl bootstrap-host --env-file .env
