@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raspi-homelab-python-framework-v2-hardened"
+version = "2.0.0"
+description = "Hardened Python-first Raspberry Pi homelab framework"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["Flask>=3.1.0", "waitress>=3.0.0", "typer>=0.12.3", "requests>=2.31.0", "docker>=7.1.0", "PyYAML>=6.0.2"]
+
+[project.scripts]
+homelabctl = "homelab_platform.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["homelab_platform*"]
