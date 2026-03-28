@@ -1,0 +1,12 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      JELLYFIN_PublishedServerUrl: https://pi-nas.taild4713b.ts.net:8446
+    volumes:
+      - ./config:/config
+      - ./cache:/cache
+      - /mnt/nas/media:/media
