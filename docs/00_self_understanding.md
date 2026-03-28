@@ -21,6 +21,7 @@ change dashboard layout → templates/index.html
 change styles → static/css/style.css
 change upload/install/remove button behavior → static/js/app.js
 change backend routes/API behavior → web.py
+
 2. Edit any app bundle
 
 For any app, edit its source under:
