@@ -40,6 +40,7 @@ metadata.json → app id, version, ports, URLs
 bundle.py → Python install/uninstall entrypoint
 runtime/docker-compose.yml → runtime container definition
 optionally app files/assets if that bundle contains them
+
 3. Build one bundle from CLI
 
 After editing a bundle, build it into a .tgz:
@@ -49,6 +50,7 @@ source .venv/bin/activate
 homelabctl build-bundle \
   --source-dir bundle_specs/dictionary.app.v1.4.5 \
   --output-path dist/dictionary.app.v1.4.5.tgz
+
 4. Build all bundles from CLI
 
 If you changed multiple bundles:
