@@ -1,4 +1,4 @@
-# Raspi Homelab Python Framework v2 Hardened
+# Raspi Homelab Python Framework
 
 This is a production-grade Python-based homelab framework designed for Raspberry Pi.
 
