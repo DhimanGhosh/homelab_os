@@ -90,7 +90,7 @@ Edit this when you want to:
 - change default values
 - expose more paths/ports to bundles
 
-### `homelab_platform/web.py`
+### `bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py`
 Flask Control Center backend.
 
 Handles:
@@ -327,7 +327,7 @@ Tailscale certificate files used by Caddy.
 
 ### Change CC UI
 Edit:
-- `homelab_platform/web.py`
+- `bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py`
 - `homelab_platform/templates/`
 - `homelab_platform/static/`
 

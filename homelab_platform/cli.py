@@ -1,4 +1,4 @@
-import json, os
+import json, os, sys
 from pathlib import Path
 import typer
 from homelab_platform.config import Settings
@@ -68,9 +68,12 @@ def run_control_center(env_file: str = ".env"):
         typer.echo(f"Port {s.control_center_public_port} is already in use.")
         raise typer.Exit(code=0)
     os.environ["HOMELAB_ENV_FILE"] = env_file
-    from homelab_platform.web import app as flask_app
-    from waitress import serve
-    serve(flask_app, host=s.control_center_bind, port=s.control_center_port)
+    cc_app_root = s.bundle_specs_dir / "control-center.app.v1.7.0" / "payload" / "app"
+    if not cc_app_root.exists():
+        raise typer.BadParameter(f"Control Center source not found: {cc_app_root}")
+    sys.path.insert(0, str(cc_app_root))
+    from control_center_app import main
+    main()
 
 @app.command("health-check")
 def health_check(env_file: str = ".env"):

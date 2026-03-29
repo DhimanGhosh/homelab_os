@@ -10,10 +10,10 @@ Now, how to change CC or any app and build/install directly from CLI:
 
 For CC UI/backend changes, work mainly in:
 
-homelab_platform/web.py
-homelab_platform/templates/index.html
-homelab_platform/static/css/style.css
-homelab_platform/static/js/app.js
+bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py
+bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/templates/index.html
+bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/static/css/style.css
+bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/static/js/app.js
 
 Typical examples:
 
@@ -112,10 +112,10 @@ For changing CC:
 cd ~/raspi_homelab_python_framework
 source .venv/bin/activate
 
-nano homelab_platform/web.py
-nano homelab_platform/templates/index.html
-nano homelab_platform/static/css/style.css
-nano homelab_platform/static/js/app.js
+nano bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py
+nano bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/templates/index.html
+nano bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/static/css/style.css
+nano bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/static/js/app.js
 
 Then either:
 

@@ -1,6 +1,6 @@
 # Control Center UI and Routes
 
-Main file: `homelab_platform/web.py`
+Main file: `bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py`
 
 Typical routes:
 - dashboard render

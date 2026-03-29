@@ -3,7 +3,7 @@
 See README for quick start.
 
 - homelab_platform/cli.py - CLI entrypoints
-- homelab_platform/web.py - Control Center Flask backend
+- bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py - Control Center Flask backend
 - homelab_platform/services/bundle_runtime.py - shared Python install helpers
 - bundle_specs/control_center_bundle_v1_6_6/ - Control Center OTA source
 - bundle_specs/pihole.app.v1.2.4/ - Pi-hole source

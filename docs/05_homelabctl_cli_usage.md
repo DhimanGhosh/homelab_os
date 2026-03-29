@@ -89,12 +89,12 @@ Defined in:
 
 ```text
 homelab_platform/cli.py
-homelab_platform/web.py
+bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py
 ```
 
 #### What it does
 - exports `HOMELAB_ENV_FILE`
-- imports `homelab_platform.web`
+- loads `control_center_app` from the Control Center bundle payload
 - loads settings from that env file
 - starts Waitress on `control_center_bind:control_center_port`
 

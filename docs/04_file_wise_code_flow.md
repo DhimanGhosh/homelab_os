@@ -69,7 +69,7 @@ So by the time `BundleInstaller.install(...)` is called, it already has:
 
 ---
 
-## 2. `homelab_platform/web.py`
+## 2. `bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py`
 This is the Flask Control Center.
 
 ### Upload route
@@ -413,7 +413,7 @@ Control Center is special because it is both:
 
 ### Runtime serving path
 If running from systemd:
-- systemd executes `python -m homelab_platform.web`
+- systemd executes `python -m control_center_app`
 - Flask app starts via Waitress
 - UI becomes available on port 8444
 
@@ -432,7 +432,7 @@ This is different from generic apps, which normally just use `generic_docker_ins
 
 ### Problem: wrong app URLs in UI
 Check:
-- `homelab_platform/web.py`
+- `bundle_specs/control-center.app.v1.7.0/payload/app/control_center_app/web.py`
 - `KNOWN_APPS`
 - `.env`
 

@@ -1,5 +1,4 @@
 import json
-import shutil
 import tarfile
 from pathlib import Path
 
@@ -17,41 +16,6 @@ class BundleBuilder:
         text = text.replace("import homelab_py.", "import homelab_platform.")
         bundle_path.write_text(text, encoding="utf-8")
 
-    def _materialize_control_center_payload(self, source_dir: Path) -> None:
-        metadata_path = source_dir / "metadata.json"
-        if not metadata_path.exists():
-            return
-        meta = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if meta.get("id") != "control-center":
-            return
-
-        repo_root = source_dir.parent.parent
-        payload_dir = source_dir / "payload"
-        if payload_dir.exists():
-            shutil.rmtree(payload_dir)
-        payload_dir.mkdir(parents=True, exist_ok=True)
-
-        includes = [
-            "bootstrap.py",
-            "pyproject.toml",
-            ".env.example",
-            "README.md",
-            "homelab_platform",
-            "recovery",
-            "bundle_specs/control_center_bundle_v1_7_0",
-        ]
-
-        for rel in includes:
-            src = repo_root / rel
-            if not src.exists():
-                continue
-            dst = payload_dir / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            if src.is_dir():
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src, dst)
-
     def validate_bundle_dir(self, source_dir: Path) -> None:
         metadata_path = source_dir / "metadata.json"
         bundle_path = source_dir / "bundle.py"
@@ -63,10 +27,11 @@ class BundleBuilder:
         meta = json.loads(metadata_path.read_text(encoding="utf-8"))
 
         if meta.get("id") == "control-center":
-            self._materialize_control_center_payload(source_dir)
             payload_dir = source_dir / "payload"
             if not payload_dir.exists():
                 raise FileNotFoundError(f"payload missing in {source_dir}")
+            if not (payload_dir / "app" / "control_center_app" / "web.py").exists():
+                raise FileNotFoundError(f"Control Center app payload missing in {source_dir}")
             return
 
         runtime_dir = source_dir / "runtime"

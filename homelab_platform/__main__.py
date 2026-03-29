@@ -1,2 +1,4 @@
-from homelab_platform.web import main
-if __name__ == "__main__": main()
+from homelab_platform.cli import app
+
+if __name__ == "__main__":
+    app()

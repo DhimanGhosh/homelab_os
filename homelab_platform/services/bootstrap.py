@@ -4,22 +4,6 @@ from homelab_platform.services.caddy_service import CaddyService
 from homelab_platform.services.recovery import install_recovery_system
 from homelab_platform.services.subprocesses import run, sudo_write_file
 
-CC_TEMPLATE = '''[Unit]
-Description=Raspi Homelab Python Framework Control Center
-After=network-online.target docker.service
-
-[Service]
-Type=simple
-WorkingDirectory={workdir}
-Environment=HOMELAB_ENV_FILE={env_file}
-ExecStart={python} -m homelab_platform.web
-Restart=always
-User={user}
-
-[Install]
-WantedBy=multi-user.target
-'''
-
 WATCHDOG_TEMPLATE = '''[Unit]
 Description=Raspi Homelab Watchdog
 After=network-online.target docker.service
@@ -77,15 +61,6 @@ class BootstrapService:
         user = run(["bash", "-lc", "whoami"]).stdout.strip() or "pi"
         python = (self.settings.env_file.parent / ".venv" / "bin" / "python").resolve()
         sudo_write_file(
-            Path("/etc/systemd/system") / self.settings.control_center_service_name,
-            CC_TEMPLATE.format(
-                workdir=self.settings.env_file.parent.resolve(),
-                env_file=self.settings.env_file.resolve(),
-                python=python,
-                user=user,
-            ),
-        )
-        sudo_write_file(
             Path("/etc/systemd/system") / self.settings.watchdog_service_name,
             WATCHDOG_TEMPLATE.format(
                 workdir=self.settings.env_file.parent.resolve(),
@@ -95,9 +70,7 @@ class BootstrapService:
             ),
         )
         run(["sudo", "systemctl", "daemon-reload"])
-        run(["sudo", "systemctl", "enable", self.settings.control_center_service_name])
         run(["sudo", "systemctl", "enable", self.settings.watchdog_service_name])
-        run(["sudo", "systemctl", "restart", self.settings.control_center_service_name], check=False)
         run(["sudo", "systemctl", "restart", self.settings.watchdog_service_name], check=False)
 
     def bootstrap(self):
