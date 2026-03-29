@@ -117,7 +117,21 @@
   <div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
 
   <script>
-    window.__INITIAL_STATE__ = {{ { 'apps': apps, 'notifications': notifications, 'jobs': jobs, 'current_version': current_version, 'total_bundles': total_bundles, 'ota': ota, 'backups': backups, 'notification_total': notification_total, 'backup_root': backup_root, 'docker_root': docker_root, 'sdcard_warning': sdcard_warning }| tojson }};
+    window.__INITIAL_STATE__ = {{
+      {
+        'apps': apps,
+        'notifications': notifications,
+        'jobs': jobs,
+        'current_version': current_version,
+        'total_bundles': total_bundles,
+        'ota': ota,
+        'backups': backups,
+        'notification_total': notification_total,
+        'backup_root': backup_root,
+        'docker_root': docker_root,
+        'sdcard_warning': sdcard_warning
+      } | tojson
+    }};
   </script>
   <script src="/static/app.js"></script>
 </body>
