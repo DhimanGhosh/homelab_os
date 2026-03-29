@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from typing import Callable
 
 
 class CommandError(RuntimeError):
@@ -10,16 +11,53 @@ class CommandError(RuntimeError):
         self.returncode = returncode
 
 
-def run(command, cwd: Path | None = None, check: bool = True, capture: bool = True, env: dict | None = None):
-    r = subprocess.run(list(command), cwd=str(cwd) if cwd else None, text=True, capture_output=capture, env=env)
-    if check and r.returncode != 0:
+def run(
+    command,
+    cwd: Path | None = None,
+    check: bool = True,
+    capture: bool = True,
+    env: dict | None = None,
+    live: bool = False,
+    line_callback: Callable[[str], None] | None = None,
+):
+    if not live:
+        r = subprocess.run(list(command), cwd=str(cwd) if cwd else None, text=True, capture_output=capture, env=env)
+        if check and r.returncode != 0:
+            raise CommandError(
+                f"Command failed: {' '.join(command)}\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}",
+                stdout=r.stdout,
+                stderr=r.stderr,
+                returncode=r.returncode,
+            )
+        return r
+
+    process = subprocess.Popen(
+        list(command),
+        cwd=str(cwd) if cwd else None,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+        env=env,
+    )
+    lines: list[str] = []
+    assert process.stdout is not None
+    for line in process.stdout:
+        lines.append(line)
+        print(line, end="", flush=True)
+        if line_callback is not None:
+            line_callback(line)
+    process.wait()
+    stdout = ''.join(lines)
+    stderr = ''
+    if check and process.returncode != 0:
         raise CommandError(
-            f"Command failed: {' '.join(command)}\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}",
-            stdout=r.stdout,
-            stderr=r.stderr,
-            returncode=r.returncode,
+            f"Command failed: {' '.join(command)}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            stdout=stdout,
+            stderr=stderr,
+            returncode=process.returncode,
         )
-    return r
+    return subprocess.CompletedProcess(list(command), process.returncode, stdout=stdout if capture else '', stderr=stderr)
 
 
 def sudo_write_file(path: Path, content: str):

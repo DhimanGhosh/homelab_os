@@ -12,11 +12,13 @@ from homelab_platform.services.subprocesses import CommandError, run, sudo_write
 
 
 def _append_log(log_path: Path | None, message: str):
+    line = f"[{datetime.now().isoformat(timespec='seconds')}] {message}"
+    print(line, flush=True)
     if not log_path:
         return
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as fh:
-        fh.write(f"[{datetime.now().isoformat(timespec='seconds')}] {message}\n")
+        fh.write(line + "\n")
 
 
 def _run_logged(command, *, cwd: Path | None = None, check: bool = True, capture: bool = True, log_path: Path | None = None, label: str | None = None, env: dict | None = None):
@@ -25,17 +27,22 @@ def _run_logged(command, *, cwd: Path | None = None, check: bool = True, capture
         pairs = [f"{k}={v}" for k, v in sorted(env.items())]
         env_note = f" env={' '.join(pairs)}"
     _append_log(log_path, f"RUN {' '.join(command)}" + (f" (cwd={cwd})" if cwd else "") + env_note)
+
+    def _stream_to_log(line: str):
+        if not log_path:
+            return
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(line if line.endswith("\n") else line + "\n")
+
     try:
-        result = run(command, cwd=cwd, check=check, capture=capture, env=env)
+        result = run(command, cwd=cwd, check=check, capture=capture, env=env, live=True, line_callback=_stream_to_log)
     except CommandError as exc:
         if exc.stdout:
-            _append_log(log_path, f"STDOUT:{exc.stdout}")
+            _append_log(log_path, "COMMAND FAILED AFTER LIVE STREAMING OUTPUT")
         if exc.stderr:
             _append_log(log_path, f"STDERR:{exc.stderr}")
         raise
     else:
-        if capture and result.stdout:
-            _append_log(log_path, f"STDOUT:{result.stdout}")
         if capture and result.stderr:
             _append_log(log_path, f"STDERR:{result.stderr}")
         return result
