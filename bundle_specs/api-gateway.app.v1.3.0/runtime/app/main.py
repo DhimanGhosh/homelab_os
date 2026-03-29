@@ -7,7 +7,7 @@ import requests
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
-app = FastAPI(title='Homelab API Gateway', version='v33')
+app = FastAPI(title='Homelab API Gateway', version='v1.3.0', description='API Gateway for Homelab services like Library, Dictionary, Statusboard, Navidrome, and more.')
 
 class AddBookPayload(BaseModel):
     title: str
