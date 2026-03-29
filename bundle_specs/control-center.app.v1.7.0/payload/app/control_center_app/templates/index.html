@@ -18,7 +18,6 @@
       </div>
       <div class="hero-actions">
         <div class="badge version-badge">v{{ current_version }}</div>
-        <button id="appsRescanBtn" class="secondary icon-btn" title="Rescan Apps">⟳ <span>Apps</span></button>
         <button id="menuToggle" class="secondary icon-btn" aria-label="Open menu">☰</button>
       </div>
     </header>
@@ -120,16 +119,16 @@
     window.__INITIAL_STATE__ = {{
       {
         'apps': apps,
-        'notifications': notifications,
-        'jobs': jobs,
-        'current_version': current_version,
-        'total_bundles': total_bundles,
-        'ota': ota,
-        'backups': backups,
-        'notification_total': notification_total,
-        'backup_root': backup_root,
-        'docker_root': docker_root,
-        'sdcard_warning': sdcard_warning
+          'notifications': notifications,
+            'jobs': jobs,
+              'current_version': current_version,
+                'total_bundles': total_bundles,
+                  'ota': ota,
+                    'backups': backups,
+                      'notification_total': notification_total,
+                        'backup_root': backup_root,
+                          'docker_root': docker_root,
+                            'sdcard_warning': sdcard_warning
       } | tojson
     }};
   </script>

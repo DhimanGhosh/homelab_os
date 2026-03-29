@@ -247,7 +247,6 @@ setInterval(refreshState, pollMs);
 document.getElementById('menuToggle')?.addEventListener('click', () => toggleMenu());
 document.getElementById('menuNotificationsBtn')?.addEventListener('click', () => toggleNotifications(true));
 document.getElementById('menuRescanBtn')?.addEventListener('click', () => queueAction('/api/marketplace/rescan', { method: 'POST' }));
-document.getElementById('appsRescanBtn')?.addEventListener('click', () => queueAction('/api/marketplace/rescan', { method: 'POST' }));
 document.getElementById('dropZone')?.addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); });
 document.getElementById('dropZone')?.addEventListener('dragleave', e => { e.currentTarget.classList.remove('dragover'); });
 document.getElementById('dropZone')?.addEventListener('drop', e => { e.preventDefault(); const input = document.getElementById('bundleInput'); if (!input) return; input.files = e.dataTransfer.files; e.currentTarget.classList.remove('dragover'); e.currentTarget.classList.toggle('has-files', input.files.length > 0); });
