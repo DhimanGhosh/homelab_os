@@ -20,13 +20,15 @@ try:
 except Exception:
     MutagenFile = None
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.1.0"
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/music-player/data")).resolve()
 PLAYLISTS_FILE = APP_DATA_DIR / "playlists.json"
 SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".webm", ".oga"}
+UNKNOWN_ARTIST_VALUES = {"", "unknown artist", "unknown"}
+UNKNOWN_ALBUM_VALUES = {"", "unknown album", "unknown"}
 
 app = FastAPI(title="Music Player", version=APP_VERSION)
 app.add_middleware(
@@ -44,11 +46,20 @@ def safe_rel_path(path: Path) -> str:
     return path.relative_to(MUSIC_ROOT).as_posix()
 
 
-def title_from_name(name: str) -> str:
-    text = Path(name).stem
-    text = re.sub(r"[_\.]+", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text or name
+def normalize_spaces(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def parse_filename_title_artists(name: str) -> tuple[str, list[str]]:
+    base = Path(name).stem
+    base = re.sub(r"[_\.]+", " ", base)
+    base = normalize_spaces(base)
+    if " - " in base:
+        title, artists_raw = base.split(" - ", 1)
+        artists = [normalize_spaces(x) for x in artists_raw.split(",") if normalize_spaces(x)]
+        if title:
+            return title, artists
+    return base or name, []
 
 
 def file_id(path: Path) -> str:
@@ -67,13 +78,16 @@ def read_playlists() -> dict[str, list[str]]:
 
 
 def write_playlists(payload: dict[str, list[str]]) -> None:
-    PLAYLISTS_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    ordered = {k: list(dict.fromkeys(v)) for k, v in sorted(payload.items())}
+    PLAYLISTS_FILE.write_text(json.dumps(ordered, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def extract_tags(path: Path) -> dict[str, Any]:
+    parsed_title, parsed_artists = parse_filename_title_artists(path.name)
     result: dict[str, Any] = {
-        "title": title_from_name(path.name),
-        "artist": "Unknown Artist",
+        "title": parsed_title,
+        "artist": ", ".join(parsed_artists) if parsed_artists else "Unknown Artist",
+        "artists": parsed_artists,
         "album": "Unknown Album",
         "duration": None,
     }
@@ -83,9 +97,16 @@ def extract_tags(path: Path) -> dict[str, Any]:
         audio = MutagenFile(str(path), easy=True)
         if not audio:
             return result
-        result["title"] = (audio.get("title") or [result["title"]])[0]
-        result["artist"] = (audio.get("artist") or [result["artist"]])[0]
-        result["album"] = (audio.get("album") or [result["album"]])[0]
+        title = normalize_spaces((audio.get("title") or [result["title"]])[0])
+        artist = normalize_spaces((audio.get("artist") or [result["artist"]])[0])
+        album = normalize_spaces((audio.get("album") or [result["album"]])[0])
+        if title:
+            result["title"] = title
+        if artist and artist.lower() not in UNKNOWN_ARTIST_VALUES:
+            result["artist"] = artist
+            result["artists"] = [normalize_spaces(x) for x in artist.split(",") if normalize_spaces(x)]
+        if album and album.lower() not in UNKNOWN_ALBUM_VALUES:
+            result["album"] = album
         if getattr(audio, "info", None) and getattr(audio.info, "length", None):
             result["duration"] = round(float(audio.info.length), 2)
     except Exception:
@@ -100,11 +121,14 @@ def track_from_file(path: Path) -> dict[str, Any]:
     if folder == ".":
         folder = ""
     mime = mimetypes.guess_type(path.name)[0] or "audio/mpeg"
+    primary_artist = tags["artists"][0] if tags["artists"] else "Unknown Artist"
     return {
         "id": file_id(path),
         "path": rel,
         "title": tags["title"],
         "artist": tags["artist"],
+        "artists": tags["artists"],
+        "primary_artist": primary_artist,
         "album": tags["album"],
         "duration": tags["duration"],
         "folder": folder,
@@ -133,12 +157,14 @@ def build_tree(paths: list[str]) -> list[dict[str, Any]]:
         node = tree
         for part in parts:
             node = node.setdefault(part, {})
+
     def convert(node: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
         out = []
         for name in sorted(node):
             current = f"{prefix}/{name}" if prefix else name
             out.append({"name": name, "path": current, "children": convert(node[name], current)})
         return out
+
     return convert(tree)
 
 
@@ -151,7 +177,25 @@ def resolve_music_path(rel_path: str) -> Path:
     return target
 
 
+def playlist_objects(playlists: dict[str, list[str]]) -> list[dict[str, Any]]:
+    return [{"name": name, "tracks": items, "count": len(items)} for name, items in sorted(playlists.items())]
+
+
+def auto_artist_playlists(tracks: list[dict[str, Any]]) -> dict[str, list[str]]:
+    generated: dict[str, list[str]] = {}
+    for track in tracks:
+        for artist in track.get("artists") or []:
+            if artist and artist.lower() not in UNKNOWN_ARTIST_VALUES:
+                generated.setdefault(artist, []).append(track["id"])
+    return {name: list(dict.fromkeys(ids)) for name, ids in generated.items()}
+
+
 class PlaylistPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    tracks: list[str] = Field(default_factory=list)
+
+
+class PlaylistAppendPayload(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     tracks: list[str] = Field(default_factory=list)
 
@@ -180,10 +224,11 @@ def library() -> JSONResponse:
     return JSONResponse({
         "tracks": tracks,
         "folders": folders,
-        "playlists": [{"name": name, "tracks": items} for name, items in sorted(playlists.items())],
+        "playlists": playlist_objects(playlists),
         "stats": {
             "track_count": len(tracks),
             "folder_count": len({t["folder"] for t in tracks if t["folder"]}),
+            "playlist_count": len(playlists),
         },
     })
 
@@ -191,7 +236,7 @@ def library() -> JSONResponse:
 @app.get("/api/playlists")
 def get_playlists() -> JSONResponse:
     playlists = read_playlists()
-    return JSONResponse({"playlists": [{"name": name, "tracks": items} for name, items in sorted(playlists.items())]})
+    return JSONResponse({"playlists": playlist_objects(playlists)})
 
 
 @app.post("/api/playlists")
@@ -199,7 +244,30 @@ def upsert_playlist(payload: PlaylistPayload) -> JSONResponse:
     playlists = read_playlists()
     playlists[payload.name.strip()] = list(dict.fromkeys(payload.tracks))
     write_playlists(playlists)
-    return JSONResponse({"ok": True, "message": "Playlist saved"})
+    return JSONResponse({"ok": True, "message": "Playlist saved", "playlists": playlist_objects(playlists)})
+
+
+@app.post("/api/playlists/append")
+def append_to_playlist(payload: PlaylistAppendPayload) -> JSONResponse:
+    playlists = read_playlists()
+    existing = playlists.get(payload.name.strip(), [])
+    playlists[payload.name.strip()] = list(dict.fromkeys(existing + payload.tracks))
+    write_playlists(playlists)
+    return JSONResponse({"ok": True, "message": "Tracks added to playlist", "playlists": playlist_objects(playlists)})
+
+
+@app.post("/api/playlists/auto-artists")
+def create_artist_playlists() -> JSONResponse:
+    playlists = read_playlists()
+    generated = auto_artist_playlists(scan_tracks())
+    for name, track_ids in generated.items():
+        playlists[name] = list(dict.fromkeys(playlists.get(name, []) + track_ids))
+    write_playlists(playlists)
+    return JSONResponse({
+        "ok": True,
+        "message": f"Created or updated {len(generated)} artist playlists",
+        "playlists": playlist_objects(playlists),
+    })
 
 
 @app.delete("/api/playlists/{name}")
@@ -207,7 +275,7 @@ def delete_playlist(name: str) -> JSONResponse:
     playlists = read_playlists()
     removed = playlists.pop(name, None)
     write_playlists(playlists)
-    return JSONResponse({"ok": True, "removed": removed is not None})
+    return JSONResponse({"ok": True, "removed": removed is not None, "playlists": playlist_objects(playlists)})
 
 
 @app.get("/api/stream/{track_path:path}")
