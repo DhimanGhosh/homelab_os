@@ -10,8 +10,8 @@ class CommandError(RuntimeError):
         self.returncode = returncode
 
 
-def run(command, cwd: Path | None = None, check: bool = True, capture: bool = True):
-    r = subprocess.run(list(command), cwd=str(cwd) if cwd else None, text=True, capture_output=capture)
+def run(command, cwd: Path | None = None, check: bool = True, capture: bool = True, env: dict | None = None):
+    r = subprocess.run(list(command), cwd=str(cwd) if cwd else None, text=True, capture_output=capture, env=env)
     if check and r.returncode != 0:
         raise CommandError(
             f"Command failed: {' '.join(command)}\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}",

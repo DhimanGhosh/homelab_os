@@ -28,7 +28,15 @@ if [[ -x "$ROOT/runtime/init.sh" ]]; then
   sudo bash "$ROOT/runtime/init.sh"
 fi
 
-sudo docker compose up -d --build
+sudo docker compose pull || true
+if ! sudo docker compose build; then
+  echo "[WARN] docker compose build failed; retrying with legacy builder" >&2
+  export DOCKER_BUILDKIT=0
+  export COMPOSE_DOCKER_CLI_BUILD=0
+  sudo docker builder prune -af || true
+  sudo docker compose build --no-cache
+fi
+sudo docker compose up -d
 for _ in $(seq 1 240); do
   if curl -kfsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
     break

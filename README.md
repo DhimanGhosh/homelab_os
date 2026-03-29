@@ -36,6 +36,15 @@ homelabctl build-all-bundles --env-file .env
 
 ---
 
+## Install a bundle
+
+```bash
+source .venv/bin/activate
+homelabctl install-bundle --bundle dist/<app_bundle>.tgz --env-file .env
+```
+
+---
+
 ## Key Rules
 
 1. Docker MUST use HDD

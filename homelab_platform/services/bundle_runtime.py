@@ -19,10 +19,14 @@ def _append_log(log_path: Path | None, message: str):
         fh.write(f"[{datetime.now().isoformat(timespec='seconds')}] {message}\n")
 
 
-def _run_logged(command, *, cwd: Path | None = None, check: bool = True, capture: bool = True, log_path: Path | None = None, label: str | None = None):
-    _append_log(log_path, f"RUN {' '.join(command)}" + (f" (cwd={cwd})" if cwd else ""))
+def _run_logged(command, *, cwd: Path | None = None, check: bool = True, capture: bool = True, log_path: Path | None = None, label: str | None = None, env: dict | None = None):
+    env_note = ""
+    if env:
+        pairs = [f"{k}={v}" for k, v in sorted(env.items())]
+        env_note = f" env={' '.join(pairs)}"
+    _append_log(log_path, f"RUN {' '.join(command)}" + (f" (cwd={cwd})" if cwd else "") + env_note)
     try:
-        result = run(command, cwd=cwd, check=check, capture=capture)
+        result = run(command, cwd=cwd, check=check, capture=capture, env=env)
     except CommandError as exc:
         if exc.stdout:
             _append_log(log_path, f"STDOUT:{exc.stdout}")
@@ -66,6 +70,32 @@ def wait_health(url: str, timeout: int = 60, log_path: Path | None = None) -> bo
             _append_log(log_path, f"HEALTH {url} -> exception: {exc}")
         time.sleep(2)
     return False
+
+
+def _should_retry_legacy_builder(exc: CommandError) -> bool:
+    text = f"{exc}\n{exc.stdout}\n{exc.stderr}".lower()
+    retry_markers = [
+        'exec: "/bin/sh": stat /bin/sh: no such file or directory',
+        'runc run failed: unable to start container process',
+        'failed to solve: process "/bin/sh -c',
+        'overlayfs',
+    ]
+    return any(marker in text for marker in retry_markers)
+
+
+def _docker_compose_build(settings, compose_dst: Path, log_path: Path | None = None):
+    cmd = ["sudo", "docker", "compose", "-f", str(compose_dst), "build"]
+    try:
+        return _run_logged(cmd, log_path=log_path)
+    except CommandError as exc:
+        if not _should_retry_legacy_builder(exc):
+            raise
+        _append_log(log_path, 'BuildKit-style build failed with a known container runtime error; retrying with legacy builder and --no-cache')
+        env = dict(__import__('os').environ)
+        env['DOCKER_BUILDKIT'] = '0'
+        env['COMPOSE_DOCKER_CLI_BUILD'] = '0'
+        _run_logged(["sudo", "docker", "builder", "prune", "-af"], check=False, log_path=log_path, env=env)
+        return _run_logged(cmd + ["--no-cache"], log_path=log_path, env=env)
 
 
 def _safe_backups_dir(settings) -> Path:
@@ -129,7 +159,7 @@ def generic_docker_install(settings, extracted: Path, meta: dict, extra_dirs: li
                 _append_log(log_path, 'Patched dictionary Dockerfile to use python3 in CMD')
 
     _run_logged(["sudo", "docker", "compose", "-f", str(compose_dst), "pull"], check=False, log_path=log_path)
-    _run_logged(["sudo", "docker", "compose", "-f", str(compose_dst), "build"], log_path=log_path)
+    _docker_compose_build(settings, compose_dst, log_path=log_path)
     try:
         _run_logged(["sudo", "docker", "compose", "-f", str(compose_dst), "up", "-d"], log_path=log_path)
     except CommandError:
