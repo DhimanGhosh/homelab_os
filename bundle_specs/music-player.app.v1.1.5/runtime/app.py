@@ -20,7 +20,7 @@ try:
 except Exception:
     MutagenFile = None
 
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.5"
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()

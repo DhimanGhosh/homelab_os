@@ -12,14 +12,14 @@
     }
     *{box-sizing:border-box}
     html,body{height:100%}
-    body{margin:0;overflow:hidden;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:var(--text);background:
+    body{margin:0;overflow:hidden;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;font-size:15px;color:var(--text);background:
       radial-gradient(circle at top left, rgba(124,58,237,.22), transparent 28%),
       radial-gradient(circle at top right, rgba(6,182,212,.16), transparent 20%),
       linear-gradient(180deg,var(--bg),#040914 100%);}
     button,input,select{font:inherit}
     button{cursor:pointer}
     .hidden{display:none!important}
-    .app-shell{height:100dvh;padding:12px;display:grid;grid-template-columns:260px minmax(0,1fr);gap:12px}
+    .app-shell{height:100dvh;padding:12px;display:grid;grid-template-columns:248px minmax(0,1fr);gap:12px}
     .panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);border-radius:var(--radius);box-shadow:var(--shadow)}
 
     .sidebar{min-height:0;padding:18px;display:flex;flex-direction:column;gap:14px}
@@ -27,7 +27,7 @@
     .brand .path{margin-top:4px;color:var(--muted);font-size:.85rem;word-break:break-all}
     .search{width:100%;border-radius:18px;border:1px solid var(--line);background:#091423;padding:13px 15px;color:var(--text);outline:none}
     .seg{display:flex;gap:8px;flex-wrap:wrap}
-    .seg button,.btn,.mini-btn,.queue-btn,.tab-btn,.icon-btn{border:none;border-radius:999px;padding:10px 14px;background:#0c1728;color:var(--text);border:1px solid var(--line);transition:.18s ease;font-weight:700}
+    .seg button,.btn,.mini-btn,.queue-btn,.tab-btn,.icon-btn{border:none;border-radius:999px;padding:9px 13px;background:#0c1728;color:var(--text);border:1px solid var(--line);transition:.18s ease;font-weight:700}
     .seg button.active,.btn.primary,.mini-btn.primary,.tab-btn.active,.icon-btn.big{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent}
     .btn:hover,.mini-btn:hover,.queue-btn:hover,.seg button:hover,.tab-btn:hover,.icon-btn:hover{transform:translateY(-1px);filter:brightness(1.05)}
     .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
@@ -42,14 +42,19 @@
     .main{min-height:0;padding:14px;display:grid;grid-template-rows:auto auto auto 1fr auto;gap:12px}
     .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
     .top-left{display:flex;align-items:flex-start;gap:10px;min-width:280px}
-    .menu-btn{display:none;width:46px;height:46px;padding:0;font-size:1.2rem}
+    .menu-btn{display:none;width:42px;height:42px;padding:0;font-size:1.05rem;flex:0 0 auto}
     .status{display:flex;gap:10px;align-items:flex-start}
     .dot{width:11px;height:11px;min-width:11px;margin-top:5px;border-radius:50%;background:var(--success);box-shadow:0 0 0 6px rgba(34,197,94,.12)}
     .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .drawer-section-title{font-weight:800;font-size:.95rem;color:#dce8ff}
+    .drawer-actions-block{display:flex;flex-direction:column;gap:10px}
+    .drawer-actions-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .drawer-actions-grid.small{grid-template-columns:1fr 1fr}
+    .drawer-action-btn{width:100%;text-align:center}
 
-    .hero{padding:18px;border-radius:26px;background:linear-gradient(135deg,rgba(124,58,237,.28),rgba(6,182,212,.14));border:1px solid var(--line);display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:16px;align-items:center}
-    .avatar{width:76px;height:76px;border-radius:24px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:2rem;font-weight:800}
-    .hero-title{font-size:clamp(1.2rem,2vw,2.5rem);font-weight:800;line-height:1.05;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .hero{padding:16px;border-radius:24px;background:linear-gradient(135deg,rgba(124,58,237,.28),rgba(6,182,212,.14));border:1px solid var(--line);display:grid;grid-template-columns:68px minmax(0,1fr) auto;gap:14px;align-items:center}
+    .avatar{width:68px;height:68px;border-radius:22px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:1.8rem;font-weight:800}
+    .hero-title{font-size:clamp(1.05rem,1.8vw,2.15rem);font-weight:800;line-height:1.05;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .hero-sub{margin-top:4px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .pill{padding:6px 10px;border-radius:999px;background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.28);font-size:.83rem;color:#e8ddff}
     .toggle-group{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -62,16 +67,16 @@
     .library-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding:0 4px 8px}
     .track-scroll{min-height:0;overflow:auto;padding-right:4px}
     .track-list{display:flex;flex-direction:column;gap:10px;padding-bottom:6px}
-    .track-item{display:grid;grid-template-columns:30px 48px minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px 14px;border-radius:18px;background:#061223;border:1px solid transparent}
+    .track-item{display:grid;grid-template-columns:24px 42px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;background:#061223;border:1px solid transparent;position:relative;-webkit-tap-highlight-color:transparent}
     .track-item.active{border-color:rgba(6,182,212,.55);background:rgba(6,182,212,.10)}
     .track-item.selected{box-shadow:inset 0 0 0 1px rgba(124,58,237,.65)}
-    .check{width:20px;height:20px}
-    .art{width:48px;height:48px;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:1.4rem;font-weight:800}
+    .check{width:18px;height:18px}
+    .art{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:1.2rem;font-weight:800}
     .meta{min-width:0}
-    .track-title{font-size:1.02rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .track-sub{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
-    .track-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-    .duration{padding:7px 10px;border-radius:999px;background:rgba(124,58,237,.14);border:1px solid rgba(124,58,237,.34);font-size:.86rem;color:#ddd3ff}
+    .track-title{font-size:.92rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .track-sub{color:var(--muted);font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+    .track-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;justify-content:flex-end}
+    .duration{padding:6px 8px;border-radius:999px;background:rgba(124,58,237,.14);border:1px solid rgba(124,58,237,.34);font-size:.78rem;color:#ddd3ff}
 
     .footer-player{position:sticky;bottom:0;background:rgba(3,10,23,.96);border:1px solid var(--line);border-radius:22px;padding:14px;display:grid;grid-template-columns:minmax(180px,280px) minmax(260px,1fr) minmax(210px,280px);grid-template-areas:
       'info progress volume'
@@ -97,54 +102,78 @@
     .drawer-body{padding:0 18px 18px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow:hidden}
     .close-btn{width:40px;height:40px;padding:0}
 
+    .context-menu{position:fixed;z-index:120;min-width:180px;padding:8px;border-radius:16px;background:rgba(8,15,28,.98);border:1px solid var(--line);box-shadow:var(--shadow);display:none;flex-direction:column;gap:6px}
+    .context-menu.open{display:flex}
+    .context-menu button{width:100%;text-align:left;border:none;border-radius:12px;padding:10px 12px;background:#0c1728;color:var(--text);border:1px solid var(--line);font-weight:700}
+    .context-menu button:hover{filter:brightness(1.06)}
+
     @media (max-width: 1180px){
       .app-shell{grid-template-columns:minmax(0,1fr)}
       .sidebar-desktop{display:none}
       .menu-btn{display:grid;place-items:center}
+      .actions{display:none}
       .main{padding:12px;grid-template-rows:auto auto auto 1fr auto}
       .footer-player{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:
         'progress progress'
         'info info'
         'controls volume'
         'actions actions';}
-      .volume-wrap{justify-self:end;width:min(100%,250px)}
+      .volume-wrap{justify-self:end;width:min(100%,220px)}
       .now-mini strong{font-size:1rem}
+      .footer-actions{justify-content:flex-end}
+      .footer-actions .queue-btn{padding:10px 12px}
     }
 
     @media (max-width: 760px){
-      body{overflow:hidden}
-      .app-shell{padding:6px}
-      .main{padding:10px;gap:10px}
-      .topbar{position:sticky;top:0;z-index:20;background:rgba(7,17,31,.96);padding-bottom:2px}
-      .top-left{min-width:0}
-      .status div:last-child{min-width:0}
-      .actions{gap:6px}
-      .actions .btn{padding:9px 12px;font-size:.95rem}
-      .hero{grid-template-columns:64px 1fr;gap:12px}
+      body{overflow:hidden;font-size:14px}
+      .app-shell{padding:8px;padding-top:calc(8px + env(safe-area-inset-top, 0px))}
+      .main{padding:10px;gap:10px;grid-template-rows:auto auto 1fr auto}
+      .topbar{position:sticky;top:0;z-index:20;background:rgba(7,17,31,.96);padding:4px 0 0}
+      .top-left{min-width:0;align-items:flex-start;gap:8px}
+      .status{gap:8px}
+      .status .hint{font-size:.84rem;line-height:1.2}
+      .menu-btn{width:40px;height:40px;margin-left:2px}
+      .hero{grid-template-columns:56px 1fr;gap:12px;padding:14px;border-radius:22px}
       .toggle-group{grid-column:1 / -1;justify-content:flex-start}
-      .avatar{width:64px;height:64px;border-radius:20px}
-      .bulkbar{padding:12px}
-      .track-item{grid-template-columns:26px 56px minmax(0,1fr);grid-template-areas:
+      .toggle-group .mini-btn{padding:8px 11px}
+      .avatar{width:56px;height:56px;border-radius:18px;font-size:1.5rem}
+      .hero-title{font-size:1rem;-webkit-line-clamp:2}
+      .hero-sub{margin-top:2px;gap:6px}
+      .hero-sub .pill:last-child{display:none}
+      .bulkbar{padding:10px}
+      .library-wrap{min-height:0}
+      .library-head{padding:0 2px 4px}
+      .library-head h2{font-size:1.15rem;line-height:1}
+      .track-scroll{padding-bottom:120px}
+      .track-list{gap:8px}
+      .track-item{grid-template-columns:22px 38px minmax(0,1fr);grid-template-areas:
         'check art meta'
-        '. actions actions';align-items:start}
-      .check{grid-area:check;margin-top:18px}
-      .art{grid-area:art;width:54px;height:54px}
+        '. actions actions';align-items:start;padding:8px 10px}
+      .check{grid-area:check;margin-top:10px}
+      .art{grid-area:art;width:38px;height:38px;border-radius:12px}
       .meta{grid-area:meta}
-      .track-actions{grid-area:actions;justify-content:flex-start;padding-left:82px}
-      .footer-player{padding:12px;border-radius:18px;gap:10px;grid-template-columns:1fr;grid-template-areas:
-        'progress'
+      .track-title{font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .track-sub{font-size:.78rem;white-space:nowrap}
+      .track-actions{grid-area:actions;justify-content:flex-start;padding-left:46px;gap:6px;margin-top:4px}
+      .track-actions .queue-btn,.track-actions .duration{padding:7px 9px;font-size:.78rem}
+      .footer-player{position:sticky;bottom:0;padding:10px 12px;border-radius:18px;gap:8px;grid-template-columns:1fr;grid-template-areas:
         'info'
-        'controls'
-        'volume'
-        'actions';}
-      .progress-wrap{grid-template-columns:48px 1fr 48px}
-      .volume-wrap{width:100%;grid-template-columns:28px 1fr 42px}
-      .controls{justify-content:center}
-      .footer-actions{justify-content:space-between}
-      .footer-actions .queue-btn{flex:1;min-width:0;padding:10px 12px}
+        'progress'
+        'controls';}
+      .now-mini .hint:first-child{display:none}
+      .now-mini strong{font-size:1rem}
       .now-mini .hint:last-child{display:none}
-      .track-scroll{padding-bottom:90px}
-      .library-head h2{font-size:2rem}
+      .progress-wrap{grid-template-columns:42px 1fr 42px;gap:8px}
+      .time-label{font-size:.85rem}
+      .controls{justify-content:center;gap:12px}
+      .icon-btn{width:42px;height:42px}
+      .icon-btn.big{width:56px;height:56px}
+      .volume-wrap,.footer-actions{display:none}
+      .compact-player-actions{display:flex}
+      .drawer{inset:calc(10px + env(safe-area-inset-top, 0px)) auto 10px 10px;width:min(340px,calc(100vw - 20px))}
+      .drawer-head{padding:14px 16px 6px}
+      .drawer-body{padding:0 16px 16px;overflow:auto}
+      .drawer-actions-grid,.drawer-actions-grid.small{grid-template-columns:1fr}
     }
   </style>
 </head>
@@ -170,8 +199,25 @@
         <div class="stat"><span class="hint">Folders</span><strong id="drawerFolderCount">0</strong></div>
         <div class="stat"><span class="hint">Queue</span><strong id="drawerQueueCount">0</strong></div>
       </div>
-      <div class="hint">Menu style navigation for mobile and compact desktop. Open this drawer to switch between all tracks, folders, and playlists.</div>
+      <div class="hint">Menu style navigation for mobile and compact desktop. Open this drawer to switch between all tracks, folders, playlists, and player actions.</div>
+      <div class="drawer-actions-block">
+        <div class="drawer-section-title">Library actions</div>
+        <div class="drawer-actions-grid">
+          <button class="btn drawer-action-btn" data-action="rescan">Rescan</button>
+          <button class="btn drawer-action-btn" data-action="smartArtists">Smart artist playlists</button>
+          <button class="btn drawer-action-btn" data-action="saveQueue">Save queue as playlist</button>
+          <button class="btn drawer-action-btn" data-action="appendFiltered">Append filtered</button>
+          <button class="btn drawer-action-btn" data-action="replaceFiltered">Replace queue with filtered</button>
+        </div>
+      </div>
       <div id="drawerSideList" class="side-list"></div>
+      <div class="drawer-actions-block compact-player-actions">
+        <div class="drawer-section-title">Player actions</div>
+        <div class="drawer-actions-grid small">
+          <button class="btn drawer-action-btn" data-action="clearQueue">Clear queue</button>
+          <button class="btn drawer-action-btn" data-action="mute">Mute / Unmute</button>
+        </div>
+      </div>
     </div>
   </aside>
 
@@ -284,6 +330,8 @@
     </main>
   </div>
 
+  <div id="contextMenu" class="context-menu"></div>
+
   <audio id="audio" preload="metadata"></audio>
 
   <script>
@@ -314,6 +362,43 @@
     function idsToTracks(ids){ return ids.map(getTrackById).filter(Boolean); }
     function selectedIds(){ return [...state.selected]; }
     function visibleTracks(){ return state.filteredTracks; }
+
+    function hideContextMenu(){ $('contextMenu').classList.remove('open'); }
+    function showContextMenu(trackId, x, y){
+      const menu = $('contextMenu');
+      menu.innerHTML = `
+        <button data-cm="play">Play now</button>
+        <button data-cm="next">Play next</button>
+        <button data-cm="queue">Add to queue</button>
+        <button data-cm="appendPlaylist">Add to playlist</button>
+        <button data-cm="newPlaylist">New playlist from song</button>`;
+      menu.classList.add('open');
+      const pad = 8;
+      menu.style.left = Math.max(pad, Math.min(x, window.innerWidth - 198)) + 'px';
+      menu.style.top = Math.max(pad, Math.min(y, window.innerHeight - 260)) + 'px';
+      menu.querySelectorAll('[data-cm]').forEach(btn => btn.onclick = async (e) => {
+        e.stopPropagation();
+        const act = btn.dataset.cm;
+        if (act === 'play') playSingle(trackId);
+        else if (act === 'next') playNext([trackId]);
+        else if (act === 'queue') appendToQueue([trackId]);
+        else if (act === 'appendPlaylist') { const name = prompt('Add to which existing playlist? Enter exact name'); if (name) await savePlaylist(name, [trackId], true); }
+        else if (act === 'newPlaylist') { const name = prompt('New playlist name'); if (name) await savePlaylist(name, [trackId], false); }
+        hideContextMenu();
+      });
+    }
+    function bindRowInteractions(row){
+      const id = row.dataset.row;
+      row.onclick = (e) => { if (e.target.closest('button,input,label,a')) return; playSingle(id); };
+      row.oncontextmenu = (e) => { e.preventDefault(); showContextMenu(id, e.clientX, e.clientY); };
+      let timer = null;
+      row.addEventListener('touchstart', (e) => {
+        if (e.target.closest('button,input,label,a')) return;
+        const t = e.touches[0];
+        timer = setTimeout(() => showContextMenu(id, t.clientX, t.clientY), 450);
+      }, {passive:true});
+      ['touchend','touchmove','touchcancel'].forEach(name => row.addEventListener(name, () => { if (timer) clearTimeout(timer); timer = null; }, {passive:true}));
+    }
 
     function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerBackdrop').classList.remove('open'); }
     function openDrawer(){ $('drawer').classList.add('open'); $('drawerBackdrop').classList.add('open'); }
@@ -385,7 +470,7 @@
       if (!items.length) { host.innerHTML = '<div class="empty">No matching songs found.</div>'; return; }
       const active = currentTrack()?.id;
       host.innerHTML = items.map(track => `
-        <div class="track-item ${active===track.id?'active':''} ${state.selected.has(track.id)?'selected':''}">
+        <div class="track-item ${active===track.id?'active':''} ${state.selected.has(track.id)?'selected':''}" data-row="${track.id}">
           <input class="check" type="checkbox" ${state.selected.has(track.id)?'checked':''} data-select="${track.id}">
           <div class="art">${escapeHtml(initialLetter(track))}</div>
           <div class="meta">
@@ -394,15 +479,14 @@
           </div>
           <div class="track-actions">
             <span class="duration">${formatDuration(track.duration)}</span>
-            <button class="mini-btn primary" data-play="${track.id}">Play</button>
             <button class="queue-btn" data-next="${track.id}">Next</button>
             <button class="queue-btn" data-queue="${track.id}">Queue</button>
           </div>
         </div>`).join('');
-      host.querySelectorAll('[data-select]').forEach(el => el.onchange = (e) => toggleSelection(e.target.dataset.select, e.target.checked));
-      host.querySelectorAll('[data-play]').forEach(el => el.onclick = () => playSingle(el.dataset.play));
-      host.querySelectorAll('[data-queue]').forEach(el => el.onclick = () => appendToQueue([el.dataset.queue]));
-      host.querySelectorAll('[data-next]').forEach(el => el.onclick = () => playNext([el.dataset.next]));
+      host.querySelectorAll('[data-select]').forEach(el => { el.onchange = (e) => toggleSelection(e.target.dataset.select, e.target.checked); el.onclick = (e) => e.stopPropagation(); });
+      host.querySelectorAll('[data-row]').forEach(row => bindRowInteractions(row));
+      host.querySelectorAll('[data-queue]').forEach(el => el.onclick = (e) => { e.stopPropagation(); appendToQueue([el.dataset.queue]); });
+      host.querySelectorAll('[data-next]').forEach(el => el.onclick = (e) => { e.stopPropagation(); playNext([el.dataset.next]); });
     }
 
     function updateHero(){
@@ -537,6 +621,17 @@
     $('drawerBackdrop').onclick = closeDrawer;
 
     document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => { setView(btn.dataset.view); }));
+    document.querySelectorAll('.drawer-action-btn').forEach(btn => btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      const map = {
+        rescan: 'rescanBtn', smartArtists: 'smartArtistBtn', saveQueue: 'saveQueueBtn',
+        appendFiltered: 'appendFilteredBtn', replaceFiltered: 'replaceFilteredBtn',
+        clearQueue: 'clearQueueBtn', mute: 'muteBtn'
+      };
+      const target = map[action] && $(map[action]);
+      if (target) target.click();
+      closeDrawer();
+    }));
 
     $('rescanBtn').onclick = async () => { await loadLibrary(); };
     $('smartArtistBtn').onclick = async () => { const data = await api('/api/playlists/auto-artists', {method:'POST'}); state.playlists = data.playlists || []; renderSideLists(); applyFilters(); alert(data.message || 'Artist playlists updated'); };
@@ -566,6 +661,9 @@
     audio.addEventListener('ended', nextTrack);
     audio.addEventListener('play', updateControls);
     audio.addEventListener('pause', updateControls);
+    document.addEventListener('click', (e) => { if (!e.target.closest('#contextMenu')) hideContextMenu(); });
+    window.addEventListener('resize', hideContextMenu);
+    window.addEventListener('scroll', hideContextMenu, true);
 
     loadLibrary().catch(err => { console.error(err); alert('Failed to load library'); });
   </script>
