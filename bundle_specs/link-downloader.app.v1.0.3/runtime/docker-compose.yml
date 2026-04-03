@@ -1,0 +1,14 @@
+services:
+  link-downloader:
+    build: .
+    container_name: link-downloader
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8160:8160"
+    environment:
+      APP_DATA_DIR: /data
+      DOWNLOAD_ROOT: /data/downloads
+      YTDLP_CACHE_DIR: /data/cache/yt-dlp
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - /mnt/nas/homelab/runtime/link-downloader/data:/data
