@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from homelab_os import __version__
+from homelab_os.core.api.jobs import router as jobs_router
 from homelab_os.core.api.plugins import router as plugins_router
 
 
@@ -13,6 +14,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(plugins_router, prefix="/api")
+    app.include_router(jobs_router, prefix="/api")
 
     @app.get("/health")
     def health() -> dict[str, str]:

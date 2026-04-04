@@ -26,5 +26,6 @@ homelabctl = "homelab_os.core.cli:app"
 include-package-data = true
 
 [tool.setuptools.packages.find]
+where = ["."]
 include = ["homelab_os*"]
 exclude = ["tests*", "runtime*", "build*"]
