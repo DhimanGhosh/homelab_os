@@ -33,7 +33,6 @@ Always work inside the virtual environment before running `pip install -e .`:
 ```bash
 cd ~/homelab_os
 source .venv/bin/activate
-pip install -e .
 ```
 
 If you run `pip install -e .` outside the virtual environment on Debian/Raspberry Pi OS, you may see the `externally-managed-environment` error from PEP 668.
