@@ -1,0 +1,17 @@
+{
+  "plugins": {
+    "test-plugin": {
+      "status": "running",
+      "runtime_type": "python",
+      "last_action": "start",
+      "pid": 2564842,
+      "stdout_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/test-plugin.out.log",
+      "stderr_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/test-plugin.err.log",
+      "last_healthcheck": {
+        "ok": true,
+        "status_code": 200,
+        "url": "http://127.0.0.1:9999/"
+      }
+    }
+  }
+}

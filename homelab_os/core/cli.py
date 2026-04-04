@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 
 from homelab_os.core.config import ensure_runtime_dirs, load_settings
-from homelab_os.core.plugin_manager import PluginBuilder, PluginInstaller
+from homelab_os.core.plugin_manager import PluginBuilder, PluginInstaller, PluginRuntime
 
 app = typer.Typer(help="homelab_os command line interface")
 
@@ -69,6 +69,7 @@ def install_plugin(plugin_archive: Path, env_file: str = ".env") -> None:
         settings=settings,
         installed_plugins_dir=settings.runtime_installed_plugins_dir,
         registry_file=settings.manifests_dir / "installed_plugins.json",
+        state_file=settings.manifests_dir / "plugin_state.json",
     )
     result = installer.install_plugin(plugin_archive)
 
@@ -76,6 +77,58 @@ def install_plugin(plugin_archive: Path, env_file: str = ".env") -> None:
     typer.echo(f"Installed dir: {result['installed_dir']}")
     if result.get("public_url"):
         typer.echo(f"Open URL: {result['public_url']}")
+
+
+@app.command("start-plugin")
+def start_plugin(plugin_id: str, env_file: str = ".env") -> None:
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+
+    runtime = PluginRuntime(
+        settings.runtime_installed_plugins_dir,
+        settings.manifests_dir / "plugin_state.json",
+    )
+    result = runtime.start_plugin(plugin_id)
+    typer.echo(str(result))
+
+
+@app.command("stop-plugin")
+def stop_plugin(plugin_id: str, env_file: str = ".env") -> None:
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+
+    runtime = PluginRuntime(
+        settings.runtime_installed_plugins_dir,
+        settings.manifests_dir / "plugin_state.json",
+    )
+    result = runtime.stop_plugin(plugin_id)
+    typer.echo(str(result))
+
+
+@app.command("restart-plugin")
+def restart_plugin(plugin_id: str, env_file: str = ".env") -> None:
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+
+    runtime = PluginRuntime(
+        settings.runtime_installed_plugins_dir,
+        settings.manifests_dir / "plugin_state.json",
+    )
+    result = runtime.restart_plugin(plugin_id)
+    typer.echo(str(result))
+
+
+@app.command("healthcheck-plugin")
+def healthcheck_plugin(plugin_id: str, env_file: str = ".env") -> None:
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+
+    runtime = PluginRuntime(
+        settings.runtime_installed_plugins_dir,
+        settings.manifests_dir / "plugin_state.json",
+    )
+    result = runtime.healthcheck_plugin(plugin_id)
+    typer.echo(str(result))
 
 
 @app.command("run-control-shell")

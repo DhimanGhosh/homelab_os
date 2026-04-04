@@ -30,7 +30,6 @@ class Settings:
     caddyfile: Path
     caddy_apps_dir: Path
     caddy_disabled_dir: Path
-    tailscale_cert_dir: Path
 
     @property
     def runtime_installed_plugins_dir(self) -> Path:
@@ -94,7 +93,6 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         caddyfile=Path(os.getenv("CADDYFILE", "/etc/caddy/Caddyfile")),
         caddy_apps_dir=Path(os.getenv("CADDY_APPS_DIR", "/etc/caddy/apps")),
         caddy_disabled_dir=Path(os.getenv("CADDY_DISABLED_DIR", "/etc/caddy/apps.disabled")),
-        tailscale_cert_dir=Path(os.getenv("TAILSCALE_CERT_DIR", "/etc/caddy/certs/tailscale")),
     )
 
 
