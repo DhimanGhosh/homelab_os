@@ -1,8 +1,0 @@
-{
-  "id": "home-assistant",
-  "name": "HA",
-  "version": "1.0.0",
-  "port": 8450,
-  "open_path": "/",
-  "description": "Home Assistant HTTPS metadata bundle for Control Center"
-}

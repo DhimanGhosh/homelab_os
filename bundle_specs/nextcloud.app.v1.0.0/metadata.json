@@ -1,8 +1,0 @@
-{
-  "id": "nextcloud",
-  "name": "Nextcloud",
-  "version": "1.0.0",
-  "port": 8448,
-  "open_path": "/",
-  "description": "Nextcloud HTTPS metadata bundle for Control Center"
-}
