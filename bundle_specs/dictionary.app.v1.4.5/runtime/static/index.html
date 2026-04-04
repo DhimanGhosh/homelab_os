@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Offline Dictionary</title>
+  <title>Dictionary</title>
   <style>
     body{font-family:Arial,Helvetica,sans-serif;background:#eef3f9;color:#1f2f46;margin:0}
     .top{background:#1b4c7b;color:#fff;padding:18px 22px}
@@ -22,7 +22,7 @@
   </style>
 </head>
 <body>
-  <div class="top"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h1 style="margin:0">Offline Dictionary</h1><span style="background:rgba(255,255,255,.18);padding:6px 10px;border-radius:999px;font-weight:700">v1.4.5</span></div></div>
+  <div class="top"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h1 id="appName" style="margin:0">Dictionary</h1><span id="appVersion" style="background:rgba(255,255,255,.18);padding:6px 10px;border-radius:999px;font-weight:700">v1.4.5</span></div></div>
   <div class="wrap">
     <div class="card">
       <div class="row">
@@ -88,5 +88,5 @@
       });
     }
   </script>
-</body>
+<script>fetch("/api/health").then(r=>r.json()).then(data=>{document.title=data.service||document.title;const n=document.getElementById("appName");const v=document.getElementById("appVersion");if(n&&data.service)n.textContent=data.service;if(v&&data.version)v.textContent="v"+data.version;}).catch(()=>{});</script></body>
 </html>

@@ -2,6 +2,11 @@
 let state = window.__INITIAL_STATE__ || { apps: [], notifications: [], jobs: [], total_bundles: 0, backups: [], notification_total: 0, backup_root: '' };
 const pollMs = 2000;
 let openBundleId = null;
+let appSearchTerm = "";
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartTime = 0;
+let isPulling = false;
 let otaWatchTimer = null;
 let selectedLogName = null;
 let selectedLogAutoScroll = true;
@@ -252,3 +257,40 @@ document.getElementById('dropZone')?.addEventListener('dragleave', e => { e.curr
 document.getElementById('dropZone')?.addEventListener('drop', e => { e.preventDefault(); const input = document.getElementById('bundleInput'); if (!input) return; input.files = e.dataTransfer.files; e.currentTarget.classList.remove('dragover'); e.currentTarget.classList.toggle('has-files', input.files.length > 0); });
 document.getElementById('bundleInput')?.addEventListener('change', e => { document.getElementById('dropZone')?.classList.toggle('has-files', !!e.target.files.length); });
 document.getElementById('drawerBackdrop')?.addEventListener('click', () => { toggleNotifications(false); toggleMenu(false); });
+
+
+function copyText(text){
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return Promise.resolve();
+}
+async function copySelectedLog(){
+  const selected = (state.jobs || []).find(j => j.id === selectedJobId);
+  const text = selected?.full_log || document.getElementById('logBox')?.textContent || 'No log available.';
+  await copyText(text);
+}
+async function refreshCurrentView(){ await refreshState(); }
+function ensurePullRefreshIndicator(){
+  let el = document.getElementById('pullRefreshIndicator');
+  if (!el) { el = document.createElement('div'); el.id = 'pullRefreshIndicator'; el.className='pull-refresh-indicator'; el.textContent='Release to refresh'; document.body.appendChild(el); }
+  return el;
+}
+function setPullRefreshVisible(visible, text){ const el = ensurePullRefreshIndicator(); el.textContent = text || 'Release to refresh'; el.classList.toggle('visible', !!visible); }
+function handleTouchStart(e){ if (e.touches.length !== 1) return; const t=e.touches[0]; touchStartX=t.clientX; touchStartY=t.clientY; touchStartTime=Date.now(); isPulling = window.scrollY <= 0; }
+function handleTouchMove(e){ if (!isPulling) return; const t=e.touches[0]; const dy=t.clientY-touchStartY; if (dy>70) setPullRefreshVisible(true,'Release to refresh'); else if (dy>20) setPullRefreshVisible(true,'Pull to refresh'); else setPullRefreshVisible(false); }
+async function handleTouchEnd(e){ const changed=e.changedTouches?.[0]; if (!changed) return; const dx=changed.clientX-touchStartX; const dy=changed.clientY-touchStartY; const dt=Date.now()-touchStartTime; setPullRefreshVisible(false); if (dt>700) return; if (Math.abs(dx)>90 && Math.abs(dy)<70){ if (dx>0) history.back(); else history.forward(); return; } if (isPulling && dy>70){ await refreshCurrentView(); } isPulling=false; }
+
+document.getElementById('menuCloseBtn')?.addEventListener('click', () => toggleMenu(false));
+document.getElementById('copyLogBtn')?.addEventListener('click', async () => { try { await copySelectedLog(); } catch (_) {} });
+document.getElementById('appSearchInput')?.addEventListener('input', (e) => { appSearchTerm = (e.target.value || '').trim().toLowerCase(); renderApps(); });
+document.getElementById('mobileBackBtn')?.addEventListener('click', () => history.back());
+document.getElementById('mobileForwardBtn')?.addEventListener('click', () => history.forward());
+document.addEventListener('touchstart', handleTouchStart, {passive:true});
+document.addEventListener('touchmove', handleTouchMove, {passive:true});
+document.addEventListener('touchend', handleTouchEnd, {passive:true});
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('menuPanel');
+  const toggle = document.getElementById('menuToggle');
+  if (!panel || !panel.classList.contains('open')) return;
+  if (panel.contains(e.target) || toggle?.contains(e.target)) return;
+  toggleMenu(false);
+});

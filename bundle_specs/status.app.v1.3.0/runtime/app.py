@@ -19,7 +19,9 @@ FQDN = os.getenv('TAILSCALE_FQDN', 'pi-nas.taild4713b.ts.net')
 NAS_PATH = Path(os.getenv('NAS_PATH', '/mnt/nas'))
 APP_BASE = Path(os.getenv('APP_BASE', '/mnt/nas/homelab/apps'))
 
-app = FastAPI(title='Pi Status Board', version='1.3.0')
+APP_NAME = os.getenv('APP_NAME', 'Pi Status Board')
+APP_VERSION = os.getenv('APP_VERSION', '1.3.0')
+app = FastAPI(title=APP_NAME, version=APP_VERSION)
 app.mount('/static', StaticFiles(directory=str(STATIC)), name='static')
 
 SERVICES = [
@@ -106,7 +108,7 @@ def index() -> HTMLResponse:
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'service': 'Pi Status Board', 'version': '1.3.0'}
+    return {'ok': True, 'service': APP_NAME, 'version': APP_VERSION}
 
 
 @app.get('/api/system')

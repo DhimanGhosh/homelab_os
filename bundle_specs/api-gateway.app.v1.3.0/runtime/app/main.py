@@ -7,7 +7,9 @@ import requests
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
-app = FastAPI(title='Homelab API Gateway', version='v1.3.0', description='API Gateway for Homelab services like Library, Dictionary, Statusboard, Navidrome, and more.')
+APP_NAME = os.getenv('APP_NAME', 'Homelab API Gateway')
+APP_VERSION = os.getenv('APP_VERSION', '1.3.0')
+app = FastAPI(title=APP_NAME, version=APP_VERSION, description='API Gateway for Homelab services like Library, Dictionary, Statusboard, Navidrome, and more.')
 
 class AddBookPayload(BaseModel):
     title: str
@@ -46,7 +48,7 @@ def proxy_json(url: str, method: str = 'GET', expected_json: bool = True, timeou
 
 @app.get('/api/health', tags=['gateway'])
 def health():
-    return {'ok': True, 'service': 'Homelab API Gateway'}
+    return {'ok': True, 'service': APP_NAME, 'version': APP_VERSION}
 
 
 @app.get('/api/library/book-enquiry', tags=['library'])

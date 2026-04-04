@@ -15,6 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote, quote, parse_qs
 
+APP_NAME = os.environ.get('APP_NAME', 'Link Downloader')
+APP_VERSION = os.environ.get('APP_VERSION', '1.0.9')
 APP_DATA_DIR = Path(os.environ.get('APP_DATA_DIR', '/data'))
 DOWNLOAD_ROOT = Path(os.environ.get('DOWNLOAD_ROOT', str(APP_DATA_DIR / 'downloads')))
 CACHE_DIR = Path(os.environ.get('YTDLP_CACHE_DIR', str(APP_DATA_DIR / 'cache' / 'yt-dlp')))

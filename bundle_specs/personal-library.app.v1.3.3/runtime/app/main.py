@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import csv
 import io
 import json
@@ -13,10 +15,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import APP_TITLE, SEARCH_FIELD_MAP, STATUS_OPTIONS
+APP_NAME = os.getenv('APP_NAME', APP_TITLE)
+APP_VERSION = os.getenv('APP_VERSION', '1.3.3')
 from .db import backup_db, connect, delete_backup, get_settings, init_db, list_backups, restore_backup, update_settings
 from .metadata import enrich_book, calculate_personalized_score, score_breakdown
 
-app = FastAPI(title=APP_TITLE)
+app = FastAPI(title=APP_NAME, version=APP_VERSION)
 app.mount('/static', StaticFiles(directory='/opt/personal-library/static'), name='static')
 
 EXPORT_COLUMNS = [
@@ -112,7 +116,7 @@ def health():
     ensure_db()
     with connect() as conn:
         total = conn.execute('SELECT COUNT(*) FROM books').fetchone()[0]
-    return {'ok': True, 'service': APP_TITLE, 'db_ok': True, 'total_books': total}
+    return {'ok': True, 'service': APP_NAME, 'version': APP_VERSION, 'db_ok': True, 'total_books': total}
 
 
 @app.get('/api/options')

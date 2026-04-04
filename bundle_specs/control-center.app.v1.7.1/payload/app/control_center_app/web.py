@@ -14,7 +14,8 @@ BACKUPS_DIR = Path(os.getenv("HOMELAB_BACKUPS_DIR", str(NAS_DIR / "homelab" / "b
 ENV_FILE = Path(os.environ.get("HOMELAB_ENV_FILE", ".env")).resolve()
 REPO_ROOT = Path(os.environ.get("REPO_ROOT", ENV_FILE.parent)).resolve()
 HOMELABCTL_BIN = Path(os.environ.get("HOMELABCTL_BIN", REPO_ROOT / ".venv" / "bin" / "homelabctl"))
-VERSION = "1.7.1"
+VERSION = os.getenv("APP_VERSION", "1.7.1")
+APP_NAME = os.getenv("APP_NAME", "Control Center")
 
 for p in [DATA_DIR, LOG_DIR, INSTALLERS_DIR, APPS_DIR, BACKUPS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
@@ -233,7 +234,7 @@ def scan_apps():
                 if info:
                     installed[normalize_app_id(d.name)] = info
     _, bundles_by_id, latest_by_id, _ = scan_bundles()
-    ids = set(KNOWN_APPS) | set(installed) | set(latest_by_id)
+    ids = ({"control-center"} | set(installed) | set(latest_by_id))
     running_by_app = {}
     for j in current_jobs():
         if j["status"] in ("queued", "running"):
@@ -283,6 +284,7 @@ def scan_apps():
         else:
             m["action"] = "none"
         cards.append(m)
+    cards = [c for c in cards if c.get("id") == "control-center" or c.get("installed") or c.get("bundles")]
     cards.sort(key=lambda x: (x["id"] != "control-center", x.get("name", x["id"]).lower()))
     return cards
 

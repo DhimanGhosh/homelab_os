@@ -772,3 +772,9 @@ input[type=file]::file-selector-button {
     margin: 0 0 12px 0;
     font-weight: 600;
 }
+
+.search-wrap{min-width:220px;flex:1}.app-search-input{width:100%;padding:11px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text)}
+.mobile-nav-btn{display:none}.menu-close-btn{align-self:flex-end;margin-bottom:10px}.section-header-with-actions h2{margin:0}
+.pull-refresh-indicator{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:1200;background:rgba(9,17,31,.94);border:1px solid rgba(255,255,255,.12);padding:8px 12px;border-radius:999px;display:none}
+.pull-refresh-indicator.visible{display:block}
+@media(max-width:980px){.hero-actions{width:100%}.search-wrap{width:100%;min-width:0;order:-1}.mobile-nav-btn{display:inline-flex}.menu-panel{max-height:calc(100vh - 32px);overflow:auto}.container{padding:14px}.actions button,.actions .btn{flex:1 1 calc(50% - 10px)}.app-card,.job-card,.card{border-radius:18px}}

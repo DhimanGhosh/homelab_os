@@ -17,6 +17,11 @@
         {% if sdcard_warning %}<div class="warn-banner">{{ sdcard_warning }}</div>{% endif %}
       </div>
       <div class="hero-actions">
+      <div class="search-wrap">
+        <input id="appSearchInput" class="app-search-input" type="search" placeholder="Search apps..." autocomplete="off">
+      </div>
+      <button id="mobileBackBtn" class="secondary mobile-nav-btn" type="button" title="Back">←</button>
+      <button id="mobileForwardBtn" class="secondary mobile-nav-btn" type="button" title="Forward">→</button>
         <div class="badge version-badge">v{{ current_version }}</div>
         <button id="menuToggle" class="secondary icon-btn" aria-label="Open menu">☰</button>
       </div>

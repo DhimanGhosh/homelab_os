@@ -17,13 +17,15 @@ from .whisper_runner import WhisperRunner
 from .ws_audio import WsContext, handle_audio_ws
 
 load_dotenv()
+APP_NAME = os.getenv('APP_NAME', 'Voice AI')
+APP_VERSION = os.getenv('APP_VERSION', '1.3.3')
 
 ROOT = Path(__file__).resolve().parent.parent
 
 cfg = load_config(ROOT / "config.json")
 TOKEN = get_token_from_env(cfg.token_env_key)
 
-app = FastAPI(title="Pi Voice AI")
+app = FastAPI(title=APP_NAME, version=APP_VERSION, title="Pi Voice AI")
 
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 

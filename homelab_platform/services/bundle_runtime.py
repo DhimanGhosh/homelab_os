@@ -109,6 +109,53 @@ def _safe_backups_dir(settings) -> Path:
     return getattr(settings, "backups_dir", settings.homelab_root / "backups")
 
 
+def _inject_bundle_env(compose_path: Path, meta: dict, log_path: Path | None = None):
+    text = compose_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    out = []
+    env_inserted = False
+    services_seen = False
+    service_indent = None
+    for i, line in enumerate(lines):
+        out.append(line)
+        stripped = line.strip()
+        if stripped == 'services:':
+            services_seen = True
+            continue
+        if services_seen and service_indent is None and line.startswith('  ') and stripped.endswith(':'):
+            service_indent = '  '
+            continue
+        if services_seen and stripped == 'environment:' and line.startswith('    '):
+            out.append('      APP_NAME: "{}"'.format(str(meta.get('name','')).replace('"','\"')))
+            out.append('      APP_VERSION: "{}"'.format(str(meta.get('version','')).replace('"','\"')))
+            env_inserted = True
+            break
+    if not env_inserted and services_seen:
+        # add env under first service
+        rebuilt=[]
+        inserted=False
+        service_found=False
+        for line in lines:
+            rebuilt.append(line)
+            stripped=line.strip()
+            if not service_found and line.startswith('  ') and stripped.endswith(':') and stripped != 'services:':
+                service_found=True
+                continue
+            if service_found and not inserted and (line.startswith('    ') and (stripped.startswith('build:') or stripped.startswith('image:') or stripped.startswith('container_name:') or stripped.startswith('restart:') or stripped.startswith('network_mode:') or stripped.startswith('ports:') or stripped.startswith('volumes:') or stripped.startswith('env_file:') or stripped.startswith('command:'))):
+                rebuilt.append('    environment:')
+                rebuilt.append('      APP_NAME: "{}"'.format(str(meta.get('name','')).replace('"','\"')))
+                rebuilt.append('      APP_VERSION: "{}"'.format(str(meta.get('version','')).replace('"','\"')))
+                inserted=True
+        if inserted:
+            text='\n'.join(rebuilt) + ('\n' if text.endswith('\n') else '')
+        else:
+            text='\n'.join(lines) + ('\n' if text.endswith('\n') else '')
+    else:
+        text='\n'.join(out + lines[len(out):]) + ('\n' if text.endswith('\n') else '')
+    compose_path.write_text(text, encoding='utf-8')
+    _append_log(log_path, f'Injected APP_NAME/APP_VERSION into {compose_path.name}')
+
+
 def generic_docker_install(settings, extracted: Path, meta: dict, extra_dirs: list[str] | None = None):
     log_path = Path(meta.get("_log_path")) if meta.get("_log_path") else None
     _append_log(log_path, f"Starting install for {meta.get('id')} version={meta.get('version')}")
@@ -155,6 +202,8 @@ def generic_docker_install(settings, extracted: Path, meta: dict, extra_dirs: li
         if backup_dst.exists():
             shutil.move(str(backup_dst), str(runtime_dst))
         raise RuntimeError(f"docker-compose.yml missing after runtime copy: {compose_dst}")
+
+    _inject_bundle_env(compose_dst, meta, log_path=log_path)
 
     if meta["id"] == "dictionary":
         dockerfile = runtime_dst / "Dockerfile"

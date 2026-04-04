@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from functools import lru_cache
 from pathlib import Path
 from difflib import get_close_matches
@@ -10,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 import nltk
 from nltk.corpus import wordnet as wn
 
-app = FastAPI(title="Offline Dictionary", version="1.4.5")
+app = FastAPI(title=os.getenv("APP_NAME", "Offline Dictionary"), version=os.getenv("APP_VERSION", "1.4.5"))
 app.mount('/static', StaticFiles(directory='/opt/offline-dictionary/static'), name='static')
 
 @app.on_event('startup')
@@ -43,7 +45,7 @@ def favicon():
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'service': 'Offline Dictionary', 'version': '1.4.5'}
+    return {'ok': True, 'service': os.getenv('APP_NAME', 'Offline Dictionary'), 'version': os.getenv('APP_VERSION', '1.4.5')}
 
 @app.get('/api/lookup')
 def lookup(q: str = Query(..., min_length=1)):
