@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>App</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+
+<body>
+  <div id="gestureHint" class="gestureHint">Release to refresh</div>
+  <div id="backdrop" class="backdrop"></div>
+  <div class="app">
+    <aside id="sidebar" class="sidebar">
+      <div class="brandRow">
+        <div class="brand" id="appTitle"></div>
+        <button id="closeSidebarBtn" class="iconBtn mobileOnly">✕</button>
+      </div>
+      <div class="sub" id="appVersionLabel"></div>
+      <div class="sideSection">
+        <button class="navbtn active" data-view="all">All Songs</button><button class="navbtn"
+          data-view="playlists">Playlists</button><button class="navbtn" data-view="artists">Artists</button><button
+          class="navbtn" data-view="folders">Folders</button>
+      </div>
+      <div class="sideSection">
+        <div class="sub">Saved playlists</div>
+        <div id="savedPlaylists" class="miniList"></div>
+      </div>
+    </aside>
+    <main class="content">
+      <div class="top">
+        <button id="menuBtn" class="iconBtn mobileOnly">☰</button>
+        <div style="position: relative; flex: 1; min-width: 220px">
+          <input id="search" class="search" type="search" placeholder="Search songs, artists, folders"
+            style="width: 100%; padding-right: 42px" /><button id="clearSearchBtn" class="iconBtn" type="button" style="
+                position: absolute;
+                right: 6px;
+                top: 50%;
+                transform: translateY(-50%);
+                display: none;
+                padding: 6px 10px;
+              ">
+            ✕
+          </button>
+        </div>
+        <div class="toolbar">
+          <button id="shuffleAll">Shuffle all</button><button id="refreshBtn">Refresh</button>
+        </div>
+      </div>
+      <div id="selectionBar" class="selectionBar">
+        <div id="selectionCount">0 selected</div>
+        <div class="selectionActions">
+          <button id="addSelectedBtn">Add selected to playlist</button><button id="clearSelectedBtn">Clear
+            selection</button>
+        </div>
+      </div>
+      <div class="sectionTitle" id="sectionTitle">All Songs</div>
+      <div id="content"></div>
+    </main>
+  </div>
+  <div class="player">
+    <div class="np">
+      <div id="nowTitle" class="title">Nothing playing</div>
+      <div id="nowArtist" class="sub">Select a track</div>
+    </div>
+    <div class="controls">
+      <div class="controlButtons">
+        <button id="prevBtn">⏮</button><button id="playBtn">▶</button><button id="nextBtn">⏭</button><button
+          id="shuffleBtn">🔀</button><button id="repeatBtn">🔁 Off</button>
+      </div>
+      <div class="barWrap">
+        <input id="seek" class="bar" type="range" min="0" max="100" value="0" />
+      </div>
+    </div>
+    <div class="timeWrap">
+      <audio id="audio" preload="metadata"></audio>
+      <div class="sub" id="timeLabel">0:00 / 0:00</div>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+
+</html>

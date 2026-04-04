@@ -2,10 +2,10 @@
 <html>
 
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Pi Control Center</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 
 <body>
@@ -14,38 +14,56 @@
       <div>
         <h1>Pi Control Center</h1>
         <div class="muted">Control OS for your Pi-NAS</div>
-        {% if sdcard_warning %}<div class="warn-banner">{{ sdcard_warning }}</div>{% endif %}
+        {% if sdcard_warning %}
+        <div class="warn-banner">{{ sdcard_warning }}</div>
+        {% endif %}
       </div>
       <div class="hero-actions">
-      <div class="search-wrap">
-        <input id="appSearchInput" class="app-search-input" type="search" placeholder="Search apps..." autocomplete="off">
-      </div>
-      <button id="mobileBackBtn" class="secondary mobile-nav-btn" type="button" title="Back">←</button>
-      <button id="mobileForwardBtn" class="secondary mobile-nav-btn" type="button" title="Forward">→</button>
+        <div class="search-wrap">
+          <div class="search-input-wrap">
+            <input id="appSearchInput" class="app-search-input" type="search" placeholder="Search apps..."
+              autocomplete="off" /><button id="clearAppSearchBtn" class="clear-input-btn secondary" type="button"
+              aria-label="Clear search">
+              ✕
+            </button>
+          </div>
+        </div>
         <div class="badge version-badge">v{{ current_version }}</div>
-        <button id="menuToggle" class="secondary icon-btn" aria-label="Open menu">☰</button>
+        <button id="menuToggle" class="secondary icon-btn" aria-label="Open menu">
+          ☰
+        </button>
       </div>
     </header>
 
     <section class="card storage">
       <h2>Storage</h2>
       <div class="grid3">
-        <div class="metric"><span>NAS Usage</span><strong>{{ nas_usage.used_gb }} GB / {{ nas_usage.total_gb }}
-            GB</strong></div>
-        <div class="metric"><span>Homelab Usage</span><strong>{{ homelab_usage.used_gb }} GB / {{ homelab_usage.total_gb
-            }} GB</strong></div>
-        <div class="metric"><span>Pi SD Card Storage</span><strong>{{ root_usage.used_gb }} GB / {{ root_usage.total_gb
-            }} GB</strong><small class="muted">Docker root: {{ docker_root }}</small></div>
+        <div class="metric">
+          <span>NAS Usage</span><strong>{{ nas_usage.used_gb }} GB / {{ nas_usage.total_gb }} GB</strong>
+        </div>
+        <div class="metric">
+          <span>Homelab Usage</span><strong>{{ homelab_usage.used_gb }} GB / {{ homelab_usage.total_gb }}
+            GB</strong>
+        </div>
+        <div class="metric">
+          <span>Pi SD Card Storage</span><strong>{{ root_usage.used_gb }} GB / {{ root_usage.total_gb }}
+            GB</strong><small class="muted">Docker root: {{ docker_root }}</small>
+        </div>
       </div>
     </section>
 
     <section class="card">
       <div class="row between">
-        <h2>Homelab Backup & Rollback</h2><button id="createBackupBtn">Create Backup</button>
+        <h2>Homelab Backup & Rollback</h2>
+        <button id="createBackupBtn">Create Backup</button>
       </div>
-      <div class="muted">Creates a one-click snapshot of the homelab stack under /mnt/nas/homelab plus Control
-        Center/Caddy service files for rollback.</div>
-      <div class="muted small">Backup store: <span id="backupRoot">{{ backup_root }}</span></div>
+      <div class="muted">
+        Creates a one-click snapshot of the homelab stack under
+        /mnt/nas/homelab plus Control Center/Caddy service files for rollback.
+      </div>
+      <div class="muted small">
+        Backup store: <span id="backupRoot">{{ backup_root }}</span>
+      </div>
       <div id="backupsArea" class="backup-list"></div>
     </section>
 
@@ -53,8 +71,9 @@
       <h2>Bundle Upload</h2>
       <form id="uploadForm" enctype="multipart/form-data" class="bundle-upload">
         <label id="dropZone" class="drop-zone">
-          <input id="bundleInput" type="file" name="files" multiple required>
-          <div><strong>Drop .tgz / .tar.gz / .zip bundles here</strong>
+          <input id="bundleInput" type="file" name="files" multiple required />
+          <div>
+            <strong>Drop .tgz / .tar.gz / .zip bundles here</strong>
             <div class="muted small">or click to browse</div>
           </div>
         </label>
@@ -66,17 +85,24 @@
     <section class="card">
       <div class="row between">
         <h2>Install Queue</h2>
-        <div class="queue-tools"><span class="muted">Live app install manager</span><button id="clearCompletedBtn"
-            class="secondary">Clear completed</button><button id="clearAllBtn" class="secondary danger-soft">Clear
-            all</button></div>
+        <div class="queue-tools">
+          <span class="muted">Live app install manager</span><button id="clearCompletedBtn" class="secondary">
+            Clear completed</button><button id="clearAllBtn" class="secondary danger-soft">
+            Clear all
+          </button>
+        </div>
       </div>
       <div id="queueMsg" class="muted queue-msg"></div>
       <div id="jobsArea" class="job-grid"></div>
     </section>
 
-    <section class="card" id="logCard" style="display:none">
+    <section class="card" id="logCard" style="display: none">
       <div class="row between">
-        <h2>Selected Job Log</h2><button id="hideLogBtn" class="secondary">Hide</button>
+        <h2>Selected Job Log</h2>
+        <div class="bundle-actions">
+          <button id="copyLogBtn" class="secondary">Copy full log</button><button id="hideLogBtn"
+            class="secondary">Hide</button>
+        </div>
       </div>
       <pre id="logBox" class="log-box"></pre>
     </section>
@@ -84,7 +110,9 @@
     <section class="card">
       <div class="row between">
         <h2>Apps, Installed Bundles & Marketplace</h2>
-        <div class="muted">Uploaded bundles: <span id="bundleCount">{{ total_bundles }}</span></div>
+        <div class="muted">
+          Uploaded bundles: <span id="bundleCount">{{ total_bundles }}</span>
+        </div>
       </div>
       <div id="appsArea" class="cards"></div>
     </section>
@@ -96,10 +124,15 @@
         <h2>Menu</h2>
         <div class="muted small">Quick actions</div>
       </div>
+      <button id="menuCloseBtn" class="secondary icon-btn" type="button" aria-label="Close menu">
+        ✕
+      </button>
     </div>
     <div class="menu-list">
-      <button id="menuNotificationsBtn">Notifications <span id="topNotificationCount"
-          class="notif-badge inline">0</span></button>
+      <button id="menuNotificationsBtn">
+        Notifications
+        <span id="topNotificationCount" class="notif-badge inline">0</span>
+      </button>
       <button id="installAllBtn">Install All</button>
       <button id="updateAllBtn">Update All</button>
       <button id="menuRescanBtn" class="secondary">Rescan Marketplace</button>
@@ -113,7 +146,9 @@
         <div id="notificationSubtitle" class="muted small"></div>
       </div>
       <div class="bundle-actions">
-        <button id="clearNotificationsBtn" class="secondary">Clear all</button>
+        <button id="clearNotificationsBtn" class="secondary">
+          Clear all
+        </button>
       </div>
     </div>
     <div id="notificationsArea"></div>

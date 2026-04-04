@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 cfg = load_config(ROOT / "config.json")
 TOKEN = get_token_from_env(cfg.token_env_key)
 
-app = FastAPI(title=APP_NAME, version=APP_VERSION, title="Pi Voice AI")
+app = FastAPI(title=APP_NAME, version=APP_VERSION)
 
 app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
 
@@ -43,6 +43,8 @@ def client_config() -> JSONResponse:
             "token": TOKEN,
             "sample_rate": cfg.vad.sample_rate,
             "frame_ms": cfg.vad.frame_ms,
+            "app_name": APP_NAME,
+            "app_version": APP_VERSION,
         }
     )
 

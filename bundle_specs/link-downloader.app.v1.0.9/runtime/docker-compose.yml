@@ -6,6 +6,8 @@ services:
     ports:
       - "127.0.0.1:8160:8160"
     environment:
+      APP_NAME: Downloader
+      APP_VERSION: 1.0.9
       APP_DATA_DIR: /data
       DOWNLOAD_ROOT: /data/downloads
       YTDLP_CACHE_DIR: /data/cache/yt-dlp

@@ -6,4 +6,6 @@ services:
     ports:
       - "127.0.0.1:8124:8124"
     environment:
+      APP_NAME: Pi Voice AI
+      APP_VERSION: 1.3.3
       PI_VOICE_AI_TOKEN: homelabtoken

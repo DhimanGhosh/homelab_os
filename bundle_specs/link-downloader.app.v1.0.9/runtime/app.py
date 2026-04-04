@@ -473,7 +473,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if parsed.path == '/api/health':
-            json_response(self, {'status': 'ok'})
+            json_response(self, {'status': 'ok', 'service': APP_NAME, 'version': APP_VERSION})
             return
         if parsed.path == '/api/status':
             with JOBS_LOCK:
