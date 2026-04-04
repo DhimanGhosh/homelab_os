@@ -1,92 +1,101 @@
-# Raspi Homelab Python Framework
+# Homelab OS
 
-This is a production-grade Python-based homelab framework designed for Raspberry Pi.
+A plugin-based Raspberry Pi homelab control OS with a simple operator-friendly bootstrap flow.
 
-## Core Features
-- Flask-based Control Center (UI + API)
-- CLI (`homelabctl`) for full control
-- TGZ-based app bundle system
-- Real-time watchdog (self-healing)
-- Docker root enforcement (HDD)
-- Fully automated recovery system
-- Safe reverse proxy architecture using Caddy
-- Tailscale-first secure access
+## Quick start
 
----
-
-## Architecture Overview
-
-Browser → Tailscale → Caddy (8444) → Control Center (9000)
-
-Docker Apps → Caddy → Public Ports (8445+)
-
-Pi-hole → Cloudflared → Internet DNS
-
----
-
-## Quick Start
+This repo intentionally restores the simple workflow you were using earlier.
 
 ```bash
-cd ~/raspi_homelab_python_framework
+cd ~/homelab_os
 python3 bootstrap.py
 source .venv/bin/activate
+homelabctl build-all-plugins --env-file .env
+```
+
+### Old command compatibility
+
+The CLI also keeps the legacy-style aliases so the following still work:
+
+```bash
 homelabctl bootstrap-host --env-file .env
 homelabctl build-all-bundles --env-file .env
+homelabctl install-bundle --bundle build/music_player.tgz --env-file .env
+homelabctl remove-app --app-id music-player --env-file .env
+homelabctl run-control-center --env-file .env
 ```
 
----
+## What `bootstrap.py` now does
 
-## Install a bundle
+Running `python3 bootstrap.py` will:
+
+1. create `.venv` if missing
+2. install the project into that virtual environment
+3. create `.env` if missing
+4. run `homelabctl bootstrap-host --env-file .env`
+
+That means it still has the operator-friendly behavior you wanted:
+- venv creation
+- package install
+- `.env` creation
+- host bootstrap
+- Caddy / Docker / watchdog setup through the CLI bootstrap service
+
+### Optional flags
 
 ```bash
+python3 bootstrap.py --skip-host
+python3 bootstrap.py --build-all
+```
+
+## Main commands
+
+```bash
+homelabctl show-settings --env-file .env
+homelabctl list-plugins --env-file .env
+homelabctl build-all-plugins --env-file .env
+homelabctl install-plugin --plugin-archive build/music_player.tgz --env-file .env
+homelabctl remove-plugin --plugin-id music-player --env-file .env
+homelabctl run-control-shell --env-file .env
+homelabctl health-check --env-file .env
+homelabctl recover-stack --env-file .env
+```
+
+## Repo layout
+
+```text
+homelab_os/
+├── bootstrap.py
+├── .env
+├── core/
+├── plugins/
+├── runtime/
+├── manifests/
+├── docs/
+├── tests/
+├── systemd/
+└── recovery/
+```
+
+## Why both old and new command names exist
+
+The repository was restructured into a plugin-based OS model, but the CLI keeps several legacy command aliases so your daily operator flow stays simple and familiar.
+
+## Notes
+
+- `.env` is included directly so you can edit it immediately.
+- `.env.example` is also kept as a reference copy.
+- `build-all-bundles` now maps to `build-all-plugins`.
+- `install-bundle` now maps to `install-plugin`.
+
+
+## Current operator flow
+
+```bash
+cd ~/homelab_os
+python3 bootstrap.py
 source .venv/bin/activate
-homelabctl install-bundle --bundle dist/<app_bundle>.tgz --env-file .env
+homelabctl build-all-plugins --env-file .env
 ```
 
----
-
-## Key Rules
-
-1. Docker MUST use HDD
-2. Caddy owns port 8444
-3. No Docker restart during app install
-4. Watchdog runs continuously
-5. Recovery auto-triggers on failure
-
----
-
-## Folder Structure
-
-- homelab_platform/
-- bundle_specs/
-- dist/
-- recovery/
-- docs/
-- systemd/
-
----
-
-## How to Modify Apps
-
-1. Edit bundle in `bundle_specs/`
-2. Build `.tgz`
-3. Install via CLI or UI
-
----
-
-## Important Commands
-
-```bash
-homelabctl install-bundle
-homelabctl remove-app
-homelabctl recover-stack
-homelabctl health-check
-```
-
----
-
-## Production Notes
-
-- Always keep Docker root on HDD
-- Never expose backend directly
-- Always use Caddy reverse proxy
+This repo uses the plugin layout under `plugins/` and the builder/runtime now stages plugin `backend/`, `frontend/`, and `docker/` content into runnable archives and runtime directories.

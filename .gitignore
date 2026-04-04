@@ -25,11 +25,17 @@ tokens/
 *.token
 
 # Build / artifacts
-dist/
-build/
 *.tgz
 *.zip
 *.tar.gz
+dist/
+build/
+runtime/
+runtime/logs/
+runtime/jobs/
+runtime/backups/
+runtime/marketplace_cache/
+runtime/installed_plugins/
 
 # OS / editor
 .DS_Store
