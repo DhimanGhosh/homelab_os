@@ -47,12 +47,17 @@ class ReverseProxyService:
         result = self._run(["sudo", "cat", str(self.settings.caddyfile)])
         return result.stdout
 
+    def has_public_route(self, plugin_id: str) -> bool:
+        return plugin_id in PLUGIN_PORT_MAP
+
     def public_port_for_plugin(self, plugin_id: str) -> int:
         if plugin_id not in PLUGIN_PORT_MAP:
             raise KeyError(f"No public port mapping defined for plugin '{plugin_id}'")
         return PLUGIN_PORT_MAP[plugin_id]
 
-    def public_url_for_plugin(self, plugin_id: str) -> str:
+    def public_url_for_plugin(self, plugin_id: str) -> str | None:
+        if not self.has_public_route(plugin_id):
+            return None
         port = self.public_port_for_plugin(plugin_id)
         suffix = PLUGIN_PATH_SUFFIX.get(plugin_id, "")
         return f"https://{self.settings.tailscale_fqdn}:{port}{suffix}"
@@ -89,6 +94,10 @@ class ReverseProxyService:
         tmp_path.unlink(missing_ok=True)
         return snippet_path
 
+    def remove_snippet_file(self, filename: str) -> None:
+        snippet_path = self.settings.caddy_apps_dir / filename
+        self._run(["sudo", "rm", "-f", str(snippet_path)])
+
     def write_snippet(self, plugin_id: str, internal_port: int) -> Path:
         return self.write_snippet_file(f"{plugin_id}.caddy", self.generate_snippet(plugin_id, internal_port))
 
@@ -111,12 +120,21 @@ class ReverseProxyService:
     def reload_caddy(self) -> None:
         self._run(["sudo", "systemctl", "reload", "caddy"])
 
-    def apply_plugin_route(self, plugin_id: str, internal_port: int) -> str:
+    def apply_plugin_route(self, plugin_id: str, internal_port: int) -> str | None:
+        if not self.has_public_route(plugin_id):
+            return None
         self.verify_main_caddyfile()
         self.write_snippet(plugin_id, internal_port)
         self.validate_caddy()
         self.reload_caddy()
         return self.public_url_for_plugin(plugin_id)
+
+    def remove_plugin_route(self, plugin_id: str) -> None:
+        if not self.has_public_route(plugin_id):
+            return
+        self.remove_snippet_file(f"{plugin_id}.caddy")
+        self.validate_caddy()
+        self.reload_caddy()
 
     def apply_core_route(self) -> str:
         self.verify_main_caddyfile()

@@ -25,7 +25,7 @@ class PluginInstaller:
         self.installed_plugins_dir.mkdir(parents=True, exist_ok=True)
 
         self.registry = PluginRegistry(registry_file)
-        self.runtime = PluginRuntime(installed_plugins_dir, state_file)
+        self.runtime = PluginRuntime(installed_plugins_dir, state_file, settings=settings)
         self.lifecycle = PluginLifecycle()
         self.validator = PluginValidator()
         self.reverse_proxy = ReverseProxyService(settings)
@@ -61,12 +61,6 @@ class PluginInstaller:
         shutil.rmtree(extract_tmp_dir, ignore_errors=True)
 
         network = manifest.get("network", {})
-        internal_port = network.get("internal_port")
-        public_url = None
-
-        if internal_port:
-            public_url = self.reverse_proxy.apply_plugin_route(plugin_id, internal_port)
-
         runtime_metadata = {
             "id": manifest["id"],
             "name": manifest["name"],
@@ -74,12 +68,17 @@ class PluginInstaller:
             "installed_dir": str(final_dir),
             "network": network,
             "entrypoint": manifest.get("entrypoint", {}),
-            "public_url": public_url,
+            "public_url": None,
         }
 
         self.runtime.write_runtime_metadata(plugin_id, runtime_metadata)
         self.lifecycle.install_marker(final_dir)
         self.lifecycle.enable_marker(final_dir)
-        self.registry.register(plugin_id, runtime_metadata)
 
+        internal_port = network.get("internal_port")
+        if internal_port and self.reverse_proxy.has_public_route(plugin_id):
+            runtime_metadata["public_url"] = self.reverse_proxy.apply_plugin_route(plugin_id, internal_port)
+            self.runtime.write_runtime_metadata(plugin_id, runtime_metadata)
+
+        self.registry.register(plugin_id, runtime_metadata)
         return runtime_metadata

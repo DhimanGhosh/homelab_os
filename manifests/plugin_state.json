@@ -1,16 +1,25 @@
 {
   "plugins": {
     "test-plugin": {
-      "status": "running",
+      "status": "stopped",
       "runtime_type": "python",
-      "last_action": "start",
-      "pid": 88077,
+      "last_action": "stop",
+      "pid": 205798,
       "stdout_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/test-plugin.out.log",
       "stderr_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/test-plugin.err.log",
       "last_healthcheck": {
-        "ok": true,
-        "status_code": 200,
-        "url": "http://127.0.0.1:9999/"
+        "ok": false,
+        "status_code": null,
+        "url": "http://127.0.0.1:9999/",
+        "error": "<urlopen error [Errno 111] Connection refused>"
+      }
+    },
+    "pihole": {
+      "last_healthcheck": {
+        "ok": false,
+        "status_code": null,
+        "url": "https://pi-nas.taild4713b.ts.net:8447/admin/",
+        "error": "<urlopen error [Errno -2] Name or service not known>"
       }
     }
   }

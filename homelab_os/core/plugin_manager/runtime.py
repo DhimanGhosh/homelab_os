@@ -9,12 +9,13 @@ from homelab_os.core.services.health import HealthService
 
 
 class PluginRuntime:
-    def __init__(self, runtime_root: Path, state_file: Path) -> None:
+    def __init__(self, runtime_root: Path, state_file: Path, settings=None) -> None:
         self.runtime_root = runtime_root
         self.runtime_root.mkdir(parents=True, exist_ok=True)
         self.runner = ProcessRunner()
         self.health = HealthService()
         self.state_store = StateStore(state_file)
+        self.settings = settings
 
     def plugin_runtime_dir(self, plugin_id: str) -> Path:
         return self.runtime_root / plugin_id
@@ -40,6 +41,21 @@ class PluginRuntime:
             return "python"
         return "unknown"
 
+    def _maybe_apply_public_route(self, plugin_id: str) -> str | None:
+        if not self.settings:
+            return None
+        from homelab_os.core.services.reverse_proxy import ReverseProxyService
+        metadata = self.read_runtime_metadata(plugin_id) or {}
+        internal_port = metadata.get("network", {}).get("internal_port")
+        if not internal_port:
+            return None
+        proxy = ReverseProxyService(self.settings)
+        url = proxy.apply_plugin_route(plugin_id, internal_port)
+        if url:
+            metadata["public_url"] = url
+            self.write_runtime_metadata(plugin_id, metadata)
+        return url
+
     def start_plugin(self, plugin_id: str) -> dict:
         plugin_dir = self.plugin_runtime_dir(plugin_id)
         if not plugin_dir.exists():
@@ -50,6 +66,7 @@ class PluginRuntime:
         if runtime_type == "docker":
             compose_dir = plugin_dir / "docker"
             result = self.runner.run(["docker", "compose", "up", "-d"], cwd=compose_dir)
+            public_url = self._maybe_apply_public_route(plugin_id)
             self.state_store.update_plugin_state(
                 plugin_id,
                 {
@@ -58,18 +75,17 @@ class PluginRuntime:
                     "last_action": "start",
                     "stdout": result.stdout,
                     "stderr": result.stderr,
+                    "public_url": public_url,
                 },
             )
-            return {"plugin_id": plugin_id, "runtime_type": "docker", "status": "running"}
+            return {"plugin_id": plugin_id, "runtime_type": "docker", "status": "running", "public_url": public_url}
 
         if runtime_type == "python":
             backend_dir = plugin_dir / "backend"
             log_dir = self.runtime_root / "_logs"
             log_dir.mkdir(parents=True, exist_ok=True)
-            stdout_path = log_dir / f"{plugin_id}.out.log"
-            stderr_path = log_dir / f"{plugin_id}.err.log"
-            stdout_file = open(stdout_path, "a", encoding="utf-8")
-            stderr_file = open(stderr_path, "a", encoding="utf-8")
+            stdout_file = open(log_dir / f"{plugin_id}.out.log", "a", encoding="utf-8")
+            stderr_file = open(log_dir / f"{plugin_id}.err.log", "a", encoding="utf-8")
 
             process = self.runner.popen(
                 ["python3", "app.py"],
@@ -78,6 +94,7 @@ class PluginRuntime:
                 stderr=stderr_file,
             )
 
+            public_url = self._maybe_apply_public_route(plugin_id)
             self.state_store.update_plugin_state(
                 plugin_id,
                 {
@@ -85,11 +102,12 @@ class PluginRuntime:
                     "runtime_type": "python",
                     "last_action": "start",
                     "pid": process.pid,
-                    "stdout_log": str(stdout_path),
-                    "stderr_log": str(stderr_path),
+                    "stdout_log": str(log_dir / f"{plugin_id}.out.log"),
+                    "stderr_log": str(log_dir / f"{plugin_id}.err.log"),
+                    "public_url": public_url,
                 },
             )
-            return {"plugin_id": plugin_id, "runtime_type": "python", "status": "running", "pid": process.pid}
+            return {"plugin_id": plugin_id, "runtime_type": "python", "status": "running", "pid": process.pid, "public_url": public_url}
 
         raise RuntimeError(f"Unsupported runtime type for plugin '{plugin_id}'")
 
@@ -141,21 +159,16 @@ class PluginRuntime:
 
         public_url = metadata.get("public_url")
         plugin_state = self.state_store.get_plugin_state(plugin_id) or {}
+        internal_port = metadata.get("network", {}).get("internal_port")
 
         if public_url:
             health = self.health.check_http(public_url)
             self.state_store.update_plugin_state(plugin_id, {"last_healthcheck": health})
             return health
 
-        internal_port = (metadata.get("network") or {}).get("internal_port")
         if internal_port:
-            local_url = f"http://127.0.0.1:{internal_port}/"
-            health = self.health.check_http(local_url)
+            health = self.health.check_http(f"http://127.0.0.1:{internal_port}/")
             self.state_store.update_plugin_state(plugin_id, {"last_healthcheck": health})
             return health
 
-        return {
-            "ok": plugin_state.get("status") == "running",
-            "status_code": None,
-            "url": None,
-        }
+        return {"ok": plugin_state.get("status") == "running", "status_code": None, "url": None}
