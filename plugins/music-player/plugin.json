@@ -2,6 +2,14 @@
   "id": "music-player",
   "name": "Music Player",
   "version": "7.1.2",
-  "network": { "internal_port": 18140 },
-  "entrypoint": { "type": "web", "path": "/" }
+  "network": {
+    "internal_port": 8140
+  },
+  "entrypoint": {
+    "type": "web",
+    "path": "/"
+  },
+  "backend": {
+    "type": "docker"
+  }
 }

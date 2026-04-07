@@ -8,5 +8,8 @@
   "entrypoint": {
     "type": "web",
     "path": "/admin/"
+  },
+  "backend": {
+    "type": "docker"
   }
 }

@@ -24,12 +24,14 @@
     },
     "music-player": {
       "status": "running",
-      "runtime_type": "python",
+      "runtime_type": "docker",
       "last_action": "start",
       "pid": 338534,
       "stdout_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/music-player.out.log",
       "stderr_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/music-player.err.log",
-      "public_url": null
+      "public_url": null,
+      "stdout": "",
+      "stderr": " Container music-player  Creating\n Container music-player  Created\n Container music-player  Starting\n Container music-player  Started\n"
     },
     "link-downloader": {
       "status": "running",
@@ -54,6 +56,20 @@
       "stdout_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/status.out.log",
       "stderr_log": "/home/pi/homelab_os/runtime/installed_plugins/_logs/status.err.log",
       "public_url": null
+    },
+    "api-gateway": {
+      "last_healthcheck": {
+        "ok": false,
+        "status_code": null,
+        "url": "https://pi-nas.taild4713b.ts.net:8456/docs",
+        "error": "<urlopen error [Errno -2] Name or service not known>"
+      }
+    },
+    "dictionary": {
+      "status": "stopped",
+      "last_action": "stop",
+      "stdout": "",
+      "stderr": " Network docker_default  Removing\n Network docker_default  Resource is still in use\n"
     }
   }
 }

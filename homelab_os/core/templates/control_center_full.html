@@ -27,14 +27,16 @@
 
     <div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
     <aside id="menuDrawer" class="menu-drawer hidden">
-      <div class="drawer-head"><h3>Menu</h3><button id="closeMenuBtn" class="secondary">✕</button></div>
+      <div class="drawer-head">
+        <h3>Menu</h3>
+        <button id="closeMenuBtn" class="secondary">✕</button>
+      </div>
       <div class="drawer-actions">
         <button id="menuNotificationsBtn">Notifications</button>
         <button id="menuRescanBtn" class="secondary">Rescan Marketplace</button>
         <button id="menuInstallAllBtn" class="secondary">Install All</button>
         <button id="menuUpdateAllBtn" class="secondary">Update All</button>
       </div>
-      <div class="muted small">Notifications are currently backed by job/log activity in the new system.</div>
     </aside>
 
     <section class="card storage">
@@ -49,7 +51,11 @@
     <section class="card">
       <div class="row between">
         <h2>Install Queue</h2>
-        <div class="queue-tools"><span class="muted">Live app install manager</span><button id="clearCompletedBtn" class="secondary">Clear completed</button><button id="clearAllBtn" class="secondary danger-soft">Clear all</button></div>
+        <div class="queue-tools">
+          <span class="muted">Live app install manager</span>
+          <button id="clearCompletedBtn" class="secondary">Clear completed</button>
+          <button id="clearAllBtn" class="secondary danger-soft">Clear all</button>
+        </div>
       </div>
       <div id="jobsArea" class="job-grid"></div>
     </section>
@@ -57,7 +63,11 @@
     <section class="card" id="logCard" style="display:none">
       <div class="row between">
         <h2>Selected Job Log</h2>
-        <div class="bundle-actions"><button id="copyLogBtn" class="secondary">Copy full log</button><button id="hideLogBtn" class="secondary">Hide</button></div>
+        <div class="bundle-actions">
+          <button id="copyLogBtn" class="secondary">Copy full log</button>
+          <button id="clearLogBtn" class="secondary danger-soft">Clear log</button>
+          <button id="hideLogBtn" class="secondary">Hide</button>
+        </div>
       </div>
       <pre id="logBox" class="log-box"></pre>
     </section>
@@ -70,6 +80,7 @@
       <div id="appsArea" class="cards"></div>
     </section>
   </div>
+
   <script src="/static/js/control_center_full.js"></script>
 </body>
 </html>
