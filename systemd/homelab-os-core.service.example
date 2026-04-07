@@ -1,0 +1,15 @@
+[Unit]
+Description=Homelab OS Core
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/homelab_os
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/homelab_os/.venv/bin/python -m uvicorn homelab_os.core.app:app --host 127.0.0.1 --port 9000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

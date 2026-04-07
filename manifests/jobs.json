@@ -87,6 +87,57 @@
       "result": {
         "count": 2
       }
+    },
+    "dcfae524-ea10-441e-9125-6b87c5e70bb3": {
+      "job_id": "dcfae524-ea10-441e-9125-6b87c5e70bb3",
+      "job_type": "restart_plugin",
+      "target": "test-plugin",
+      "status": "completed",
+      "progress": 100,
+      "created_at": "2026-04-07T22:09:06",
+      "updated_at": "2026-04-07T22:09:06",
+      "metadata": {
+        "plugin_id": "test-plugin"
+      },
+      "result": {
+        "plugin_id": "test-plugin",
+        "runtime_type": "python",
+        "status": "running",
+        "pid": 82792
+      }
+    },
+    "e6697cab-c68c-442a-a06c-943c09f41cd2": {
+      "job_id": "e6697cab-c68c-442a-a06c-943c09f41cd2",
+      "job_type": "restart_plugin",
+      "target": "test-plugin",
+      "status": "completed",
+      "progress": 100,
+      "created_at": "2026-04-07T22:15:43",
+      "updated_at": "2026-04-07T22:15:43",
+      "metadata": {
+        "plugin_id": "test-plugin"
+      },
+      "result": {
+        "plugin_id": "test-plugin",
+        "runtime_type": "python",
+        "status": "running",
+        "pid": 88077
+      }
+    },
+    "cb5849aa-c73c-442e-b3e0-4c3d6f3fae81": {
+      "job_id": "cb5849aa-c73c-442e-b3e0-4c3d6f3fae81",
+      "job_type": "build_all_plugins",
+      "target": "all",
+      "status": "completed",
+      "progress": 100,
+      "created_at": "2026-04-07T23:24:49",
+      "updated_at": "2026-04-07T23:24:49",
+      "metadata": {
+        "plugins_dir": "/home/pi/homelab_os/plugins"
+      },
+      "result": {
+        "count": 2
+      }
     }
   }
 }

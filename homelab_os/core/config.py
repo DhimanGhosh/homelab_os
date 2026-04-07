@@ -14,22 +14,19 @@ class Settings:
     nas_mount: Path
     homelab_root: Path
     docker_root_dir: Path
-
     build_dir: Path
     plugins_dir: Path
     manifests_dir: Path
     runtime_dir: Path
-
     logs_dir: Path
     backups_dir: Path
-
     control_center_bind: str
     control_center_port: int
     control_center_public_port: int
-
     caddyfile: Path
     caddy_apps_dir: Path
     caddy_disabled_dir: Path
+    tailscale_cert_dir: Path
 
     @property
     def runtime_installed_plugins_dir(self) -> Path:
@@ -55,11 +52,9 @@ class Settings:
 def _load_env_file(env_file: str | Path | None) -> None:
     if not env_file:
         return
-
     path = Path(env_file)
     if not path.exists():
         return
-
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -70,9 +65,7 @@ def _load_env_file(env_file: str | Path | None) -> None:
 
 def load_settings(env_file: str | Path | None = None) -> Settings:
     _load_env_file(env_file)
-
     root = Path.cwd()
-
     return Settings(
         hostname=os.getenv("HOSTNAME", "pi-nas"),
         lan_ip=os.getenv("LAN_IP", "192.168.88.10"),
@@ -93,11 +86,12 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         caddyfile=Path(os.getenv("CADDYFILE", "/etc/caddy/Caddyfile")),
         caddy_apps_dir=Path(os.getenv("CADDY_APPS_DIR", "/etc/caddy/apps")),
         caddy_disabled_dir=Path(os.getenv("CADDY_DISABLED_DIR", "/etc/caddy/apps.disabled")),
+        tailscale_cert_dir=Path(os.getenv("TAILSCALE_CERT_DIR", "/etc/caddy/certs/tailscale")),
     )
 
 
 def ensure_runtime_dirs(settings: Settings) -> None:
-    dirs = [
+    for directory in [
         settings.build_dir,
         settings.plugins_dir,
         settings.manifests_dir,
@@ -109,7 +103,5 @@ def ensure_runtime_dirs(settings: Settings) -> None:
         settings.runtime_backups_dir,
         settings.logs_dir,
         settings.backups_dir,
-    ]
-
-    for directory in dirs:
+    ]:
         directory.mkdir(parents=True, exist_ok=True)
