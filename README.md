@@ -13,8 +13,6 @@ This repo currently includes:
 - FastAPI core app foundation
 - runtime directory initialization
 
-Plugin builder, installer, runtime, reverse proxy, and migrated plugins will be added in the next steps.
-
 ## Quick start
 
 ```bash
