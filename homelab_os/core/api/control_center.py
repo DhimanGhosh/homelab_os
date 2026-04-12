@@ -22,12 +22,12 @@ APP_META = {
     "dictionary": {"name": "Dictionary", "port": 8455},
     "files": {"name": "Files", "port": 8449},
     "homarr": {"name": "Homarr", "port": 8453},
-    "home-assistant": {"name": "Home Assistant", "port": 8450},
-    "jellyfin": {"name": "Jellyfin", "port": 8446},
+    "home-assistant": {"name": "Home Assistant", "port": 8450},  # Deprecated, will be removed in favor of status and voice-ai
+    "jellyfin": {"name": "Jellyfin", "port": 8446},  # Deprecated, will be removed in favor of media-dashboard
     "link-downloader": {"name": "Media Downloader", "port": 8460},
     "music-player": {"name": "Music Player", "port": 8459},
-    "navidrome": {"name": "Navidrome", "port": 8445},
-    "nextcloud": {"name": "Nextcloud", "port": 8448},
+    "navidrome": {"name": "Navidrome", "port": 8445},  # Deprecated, will be removed in favor of music-player
+    "nextcloud": {"name": "Nextcloud", "port": 8448},  # Deprecated, will be removed in favor of files
     "personal-library": {"name": "Personal Library", "port": 8454},
     "pihole": {"name": "Pi-hole", "port": 8447},
     "status": {"name": "Pi Status Board", "port": 8451},
