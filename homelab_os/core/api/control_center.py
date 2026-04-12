@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from shutil import disk_usage
 
@@ -53,6 +54,24 @@ def _services():
     return settings, registry, jobs, logs, runtime, installer, proxy
 
 
+def _version_key(version: str | None) -> tuple:
+    if not version:
+        return tuple()
+    parts = re.split(r"[._-]", str(version).strip())
+    key = []
+    for part in parts:
+        if part.isdigit():
+            key.append((0, int(part)))
+        else:
+            key.append((1, part.lower()))
+    return tuple(key)
+
+
+def _bundle_version_from_name(filename: str) -> str | None:
+    match = re.search(r"\.v([^./]+(?:\.[^./]+)*)\.tgz$", filename)
+    return match.group(1) if match else None
+
+
 def _bundle_groups(settings: object) -> dict:
     build_dir = settings.build_dir
     grouped = {}
@@ -65,10 +84,17 @@ def _bundle_groups(settings: object) -> dict:
 
         stem = file.stem.replace("_", "-")
         app_id = stem.split(".v", 1)[0] if ".v" in stem else stem
-        grouped.setdefault(app_id, []).append({"filename": file.name, "path": str(file)})
+        version = _bundle_version_from_name(file.name)
+        grouped.setdefault(app_id, []).append(
+            {
+                "filename": file.name,
+                "path": str(file),
+                "version": version,
+            }
+        )
 
     for bundles in grouped.values():
-        bundles.sort(key=lambda item: item["filename"], reverse=True)
+        bundles.sort(key=lambda item: (_version_key(item.get("version")), item["filename"]), reverse=True)
 
     return grouped
 
@@ -110,18 +136,27 @@ def _catalog_with_runtime():
         installed_meta = installed.get(app_id)
         catalog_meta = app_catalog.get_app(app_id)
         plugin_state = state_payload.get(app_id, {})
+        bundles = bundle_groups.get(app_id, [])
+        latest_bundle = bundles[0] if bundles else None
+        installed_version = installed_meta.get("version") if installed_meta else None
+        latest_version = latest_bundle.get("version") if latest_bundle else installed_version
+        update_available = bool(
+            installed_meta and latest_bundle and _version_key(latest_version) > _version_key(installed_version)
+        )
 
         catalog.append({
             "id": app_id,
             "name": _app_name(app_id, installed_meta, catalog_meta),
-            "latest_version": installed_meta.get("version") if installed_meta else None,
-            "installed_version": installed_meta.get("version") if installed_meta else None,
+            "latest_version": latest_version,
+            "installed_version": installed_version,
             "installed": installed_meta is not None,
             "public_url": installed_meta.get("public_url") if installed_meta else None,
             "port": _app_port(app_id, settings, catalog_meta),
-            "bundles": bundle_groups.get(app_id, []),
-            "bundle_count": len(bundle_groups.get(app_id, [])),
+            "bundles": bundles,
+            "bundle_count": len(bundles),
             "status": plugin_state.get("status", "stopped" if installed_meta else "not-installed"),
+            "latest_bundle_filename": latest_bundle.get("filename") if latest_bundle else None,
+            "update_available": update_available,
         })
 
     return settings, catalog, jobs
@@ -229,14 +264,13 @@ def install_all(background_tasks: BackgroundTasks) -> dict:
     settings, registry, jobs, logs, runtime, installer, proxy = _services()
     count = 0
     for app_id, bundles in _bundle_groups(settings).items():
-        if app_id == "control-center":
+        if app_id == "control-center" or not bundles:
             continue
-        for bundle in bundles:
-            job = jobs.create_job("install_plugin", bundle["path"], {"archive": bundle["path"], "app_id": app_id, "auto_start": True})
-            logs.append_job_log(job["job_id"], f"Queued install for {bundle['filename']}")
-            background_tasks.add_task(_install_job, job["job_id"], bundle["path"], True)
-            count += 1
-            break
+        bundle = bundles[0]
+        job = jobs.create_job("install_plugin", bundle["path"], {"archive": bundle["path"], "app_id": app_id, "auto_start": True})
+        logs.append_job_log(job["job_id"], f"Queued install for {bundle['filename']}")
+        background_tasks.add_task(_install_job, job["job_id"], bundle["path"], True)
+        count += 1
     return {"ok": True, "queued": count}
 
 
@@ -246,10 +280,11 @@ def update_all(background_tasks: BackgroundTasks) -> dict:
     logs = LoggingService(settings.runtime_jobs_dir)
     count = 0
     for app in catalog:
-        if app["installed"] and app["id"] != "control-center":
-            job = jobs.create_job("restart_plugin", app["id"], {"plugin_id": app["id"]})
-            logs.append_job_log(job["job_id"], f"Queued restart for {app['id']}")
-            background_tasks.add_task(_runtime_job, job["job_id"], "restart", app["id"])
+        if app.get("installed") and app.get("update_available") and app.get("latest_bundle_filename"):
+            archive = settings.build_dir / app["latest_bundle_filename"]
+            job = jobs.create_job("install_plugin", str(archive), {"archive": str(archive), "app_id": app["id"], "auto_start": True})
+            logs.append_job_log(job["job_id"], f"Queued update for {app['id']} -> {app['latest_bundle_filename']}")
+            background_tasks.add_task(_install_job, job["job_id"], str(archive), True)
             count += 1
     return {"ok": True, "queued": count}
 

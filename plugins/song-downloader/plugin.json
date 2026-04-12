@@ -1,7 +1,7 @@
 {
   "id": "song-downloader",
   "name": "Song Downloader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "network": {
     "internal_port": 8145
   },

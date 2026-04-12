@@ -4,7 +4,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import threading
 import time
 import uuid
@@ -16,7 +15,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
 APP_NAME = os.environ.get('APP_NAME', 'Song Downloader')
-APP_VERSION = os.environ.get('APP_VERSION', '1.0.0')
+APP_VERSION = os.environ.get('APP_VERSION', '1.0.1')
 PORT = int(os.environ.get('PORT', '8145'))
 APP_DATA_DIR = Path(os.environ.get('APP_DATA_DIR', '/data'))
 DOWNLOAD_ROOT = Path(os.environ.get('DOWNLOAD_ROOT', str(APP_DATA_DIR / 'downloads')))
@@ -25,6 +24,7 @@ MEDIA_DOWNLOADER_BASE_URL = os.environ.get('MEDIA_DOWNLOADER_BASE_URL', '').rstr
 ALLOWED_DEST_ROOTS = [Path(p) for p in os.environ.get('ALLOWED_DEST_ROOTS', '/mnt/nas:/data').split(':') if p]
 STATIC_DIR = Path(__file__).resolve().parent / 'static'
 HOST = '0.0.0.0'
+YOUTUBE_HOST_HINTS = ('youtube.com', 'youtu.be', 'music.youtube.com')
 
 for path in [APP_DATA_DIR, DOWNLOAD_ROOT]:
     path.mkdir(parents=True, exist_ok=True)
@@ -48,15 +48,23 @@ def normalize_artists(artists_raw: str) -> str:
     return ', '.join(parts)
 
 
-def final_song_name(song_name: str, artists: str, rename_to: str | None) -> str:
+def final_song_name(song_name: str, artists: str, rename_to: str | None, youtube_url: str | None = None) -> str:
     custom = (rename_to or '').strip()
     if custom:
         return safe_name(custom)
-    return safe_name(f"{song_name.strip()} - {normalize_artists(artists)}")
+    song_name = (song_name or '').strip()
+    artists = normalize_artists(artists)
+    if song_name and artists:
+        return safe_name(f'{song_name} - {artists}')
+    if song_name:
+        return safe_name(song_name)
+    if youtube_url:
+        return safe_name('downloaded-audio')
+    return safe_name('song')
 
 
 def query_text(song_name: str, artists: str, album_name: str) -> str:
-    pieces = [song_name.strip(), normalize_artists(artists), (album_name or '').strip(), 'official audio']
+    pieces = [song_name.strip(), normalize_artists(artists), (album_name or '').strip(), 'official audio', '-video']
     return ' '.join([p for p in pieces if p])
 
 
@@ -91,10 +99,6 @@ def reserve_target(dest_dir: Path, stem: str, suffix: str = '.mp3') -> Path:
         if not candidate.exists():
             return candidate
         idx += 1
-
-
-def which(cmd: str):
-    return shutil.which(cmd)
 
 
 def media_downloader_available() -> bool:
@@ -142,6 +146,7 @@ def update_job(job_id: str, **fields):
 
 def new_job(payload: dict) -> str:
     job_id = str(uuid.uuid4())
+    display_name = payload.get('song_name') or payload.get('rename_to') or payload.get('youtube_url') or 'audio download'
     with LOCK:
         JOBS[job_id] = {
             'id': job_id,
@@ -149,6 +154,7 @@ def new_job(payload: dict) -> str:
             'progress': 0,
             'message': 'Queued',
             'payload': payload,
+            'display_name': display_name,
             'created_at': now_iso(),
             'updated_at': now_iso(),
             'final_path': None,
@@ -157,7 +163,28 @@ def new_job(payload: dict) -> str:
     return job_id
 
 
-def run_direct_download(job_id: str, query: str, destination_dir: Path, final_stem: str):
+def clear_jobs() -> int:
+    with LOCK:
+        before = len(JOBS)
+        removable = [job_id for job_id, job in JOBS.items() if job.get('status') in {'completed', 'failed'}]
+        for job_id in removable:
+            JOBS.pop(job_id, None)
+    return len(removable) if before else 0
+
+
+def resolve_source(youtube_url: str, query: str) -> tuple[str, str]:
+    url = (youtube_url or '').strip()
+    if not url:
+        return 'search', 'ytsearch1:' + query
+    parsed = urlparse(url)
+    if parsed.scheme not in {'http', 'https'}:
+        raise ValueError('youtube_url must begin with http:// or https://')
+    if not any(host in (parsed.netloc or '') for host in YOUTUBE_HOST_HINTS):
+        raise ValueError('youtube_url must be a YouTube or YouTube Music link')
+    return 'youtube_url', url
+
+
+def run_direct_download(job_id: str, source_value: str, destination_dir: Path, final_stem: str, source_kind: str):
     update_job(job_id, status='starting', progress=5, message='Downloading with direct yt-dlp fallback…', download_backend='direct-yt-dlp')
     try:
         import yt_dlp
@@ -188,10 +215,12 @@ def run_direct_download(job_id: str, query: str, destination_dir: Path, final_st
         'format': 'bestaudio/best',
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
     }
+    if source_kind == 'search':
+        opts['default_search'] = 'ytsearch'
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.extract_info('ytsearch1:' + query, download=True)
+            ydl.extract_info(source_value, download=True)
     except Exception as exc:
         update_job(job_id, status='failed', progress=100, message=str(exc))
         return
@@ -208,10 +237,13 @@ def run_direct_download(job_id: str, query: str, destination_dir: Path, final_st
     update_job(job_id, status='completed', progress=100, message='Song downloaded and transferred', final_path=str(target))
 
 
-def run_media_api_download(job_id: str, query: str, destination_dir: Path, final_stem: str):
+def run_media_api_download(job_id: str, source_value: str, destination_dir: Path, final_stem: str, source_kind: str):
     update_job(job_id, status='starting', progress=5, message='Requesting Media Downloader API…', download_backend='media-downloader-api')
     try:
-        result = api_post('/api/download', {'url': 'ytsearch1:' + query, 'mode': 'audio', 'audio_format': 'mp3'})
+        payload = {'url': source_value, 'mode': 'audio', 'audio_format': 'mp3'}
+        if source_kind == 'search':
+            payload['url'] = source_value
+        result = api_post('/api/download', payload)
         md_job_id = result['job_id']
     except (HTTPError, URLError, KeyError, TimeoutError) as exc:
         update_job(job_id, status='failed', progress=100, message=f'Media Downloader API request failed: {exc}')
@@ -260,34 +292,51 @@ def run_media_api_download(job_id: str, query: str, destination_dir: Path, final
 
 def worker(job_id: str):
     payload = JOBS[job_id]['payload']
-    song_name = payload['song_name']
-    artists = payload['artists']
+    song_name = payload.get('song_name', '')
+    artists = payload.get('artists', '')
     album_name = payload.get('album_name', '')
     rename_to = payload.get('rename_to') or ''
+    youtube_url = payload.get('youtube_url') or ''
     destination_path = payload.get('destination_path') or DEFAULT_DESTINATION_DIR
 
     try:
         destination_dir = ensure_destination(destination_path)
-        final_stem = final_song_name(song_name, artists, rename_to)
+        final_stem = final_song_name(song_name, artists, rename_to, youtube_url)
         query = query_text(song_name, artists, album_name)
+        source_kind, source_value = resolve_source(youtube_url, query)
     except Exception as exc:
         update_job(job_id, status='failed', progress=100, message=str(exc))
         return
 
     if media_downloader_available():
-        run_media_api_download(job_id, query, destination_dir, final_stem)
+        run_media_api_download(job_id, source_value, destination_dir, final_stem, source_kind)
         return
-    run_direct_download(job_id, query, destination_dir, final_stem)
+    run_direct_download(job_id, source_value, destination_dir, final_stem, source_kind)
 
 
 def json_response(handler: BaseHTTPRequestHandler, payload: dict | list, code: int = HTTPStatus.OK, head_only: bool = False):
     body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     handler.send_response(code)
+    handler.send_header('Access-Control-Allow-Origin', '*')
     handler.send_header('Content-Type', 'application/json; charset=utf-8')
     handler.send_header('Content-Length', str(len(body)))
     handler.end_headers()
     if not head_only:
         handler.wfile.write(body)
+
+
+def build_status_payload() -> dict:
+    with LOCK:
+        jobs = sorted(JOBS.values(), key=lambda item: item['created_at'], reverse=True)
+    return {
+        'status': 'ok',
+        'version': APP_VERSION,
+        'jobs': jobs,
+        'default_destination': DEFAULT_DESTINATION_DIR,
+        'media_downloader_base_url': MEDIA_DOWNLOADER_BASE_URL,
+        'media_downloader_available': media_downloader_available(),
+        'note': 'This app may use the Media Downloader API to fetch audio when that API is reachable. It falls back to direct yt-dlp when needed.'
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -303,70 +352,57 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b'{}'
         return json.loads(raw.decode('utf-8')) if raw else {}
 
+    def _serve_index(self, head_only: bool = False):
+        body = (STATIC_DIR / 'index.html').read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
+
     def do_HEAD(self):
         parsed = urlparse(self.path)
         if parsed.path == '/':
-            body = (STATIC_DIR / 'index.html').read_bytes()
-            self.send_response(HTTPStatus.OK)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            return
+            return self._serve_index(head_only=True)
         if parsed.path == '/api/health':
             return json_response(self, {'status': 'ok', 'service': APP_NAME, 'version': APP_VERSION}, head_only=True)
         if parsed.path == '/api/status':
-            with LOCK:
-                jobs = sorted(JOBS.values(), key=lambda item: item['created_at'], reverse=True)
-            return json_response(self, {
-                'status': 'ok',
-                'jobs': jobs,
-                'default_destination': DEFAULT_DESTINATION_DIR,
-                'media_downloader_base_url': MEDIA_DOWNLOADER_BASE_URL,
-                'media_downloader_available': media_downloader_available(),
-                'note': 'This app may use the Media Downloader API to fetch audio when that API is reachable. It falls back to direct yt-dlp when needed.'
-            }, head_only=True)
+            return json_response(self, build_status_payload(), head_only=True)
         return json_response(self, {'error': 'not found'}, HTTPStatus.NOT_FOUND, head_only=True)
 
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == '/':
-            body = (STATIC_DIR / 'index.html').read_bytes()
-            self.send_response(HTTPStatus.OK)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
+            return self._serve_index()
         if parsed.path == '/api/health':
             return json_response(self, {'status': 'ok', 'service': APP_NAME, 'version': APP_VERSION})
         if parsed.path == '/api/status':
-            with LOCK:
-                jobs = sorted(JOBS.values(), key=lambda item: item['created_at'], reverse=True)
-            return json_response(self, {
-                'status': 'ok',
-                'jobs': jobs,
-                'default_destination': DEFAULT_DESTINATION_DIR,
-                'media_downloader_base_url': MEDIA_DOWNLOADER_BASE_URL,
-                'media_downloader_available': media_downloader_available(),
-                'note': 'This app may use the Media Downloader API to fetch audio when that API is reachable. It falls back to direct yt-dlp when needed.'
-            })
+            return json_response(self, build_status_payload())
         return json_response(self, {'error': 'not found'}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == '/api/clear-jobs':
+            cleared = clear_jobs()
+            return json_response(self, {'ok': True, 'cleared': cleared})
         if parsed.path != '/api/download-song':
             return json_response(self, {'error': 'not found'}, HTTPStatus.NOT_FOUND)
+
         payload = self._read_json()
         song_name = (payload.get('song_name') or '').strip()
         artists = normalize_artists(payload.get('artists') or '')
         album_name = (payload.get('album_name') or '').strip()
         rename_to = (payload.get('rename_to') or '').strip()
         destination_path = (payload.get('destination_path') or DEFAULT_DESTINATION_DIR).strip()
+        youtube_url = (payload.get('youtube_url') or '').strip()
 
-        if not song_name:
-            return json_response(self, {'error': 'song_name is required'}, HTTPStatus.BAD_REQUEST)
-        if not artists:
-            return json_response(self, {'error': 'artists is required'}, HTTPStatus.BAD_REQUEST)
+        if not youtube_url and not song_name:
+            return json_response(self, {'error': 'song_name is required when youtube_url is not provided'}, HTTPStatus.BAD_REQUEST)
+        if not youtube_url and not artists:
+            return json_response(self, {'error': 'artists is required when youtube_url is not provided'}, HTTPStatus.BAD_REQUEST)
+        if youtube_url and not (rename_to or (song_name and artists) or song_name):
+            return json_response(self, {'error': 'Provide rename_to or song_name when using a youtube_url so the final filename can be generated'}, HTTPStatus.BAD_REQUEST)
 
         job_id = new_job({
             'song_name': song_name,
@@ -374,6 +410,7 @@ class Handler(BaseHTTPRequestHandler):
             'album_name': album_name,
             'rename_to': rename_to,
             'destination_path': destination_path,
+            'youtube_url': youtube_url,
         })
         threading.Thread(target=worker, args=(job_id,), daemon=True).start()
         return json_response(self, {'ok': True, 'job_id': job_id})
