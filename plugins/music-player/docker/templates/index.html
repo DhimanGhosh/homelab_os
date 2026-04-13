@@ -1,4 +1,97 @@
-<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'><title>Music Player</title>
-<link rel="stylesheet" href="/static/css/styles.css"></head><body>
-<div id='gestureHint' class='gestureHint'>Release to refresh</div><div id='backdrop' class='backdrop'></div><div class='app'><aside id='sidebar' class='sidebar'><div class='brandRow'><div class='brand' id='appTitle'>Music Player</div><button id='closeSidebarBtn' class='iconBtn mobileOnly'>✕</button></div><div class='sub' id='appVersionLabel'>v7.1.2</div><div class='sideSection'><button class='navbtn active' data-view='all'>All Songs</button><button class='navbtn' data-view='playlists'>Playlists</button><button class='navbtn' data-view='artists'>Artists</button><button class='navbtn' data-view='folders'>Folders</button></div><div class='sideSection'><div class='sub'>Saved playlists</div><div id='savedPlaylists' class='miniList'></div></div></aside><main class='content'><div class='top'><button id='menuBtn' class='iconBtn mobileOnly'>☰</button><div style='position:relative;flex:1;min-width:220px'><input id='search' class='search' type='search' placeholder='Search songs, artists, folders' style='width:100%;padding-right:42px'><button id='clearSearchBtn' class='iconBtn' type='button' style='position:absolute;right:6px;top:50%;transform:translateY(-50%);display:none;padding:6px 10px'>✕</button></div><div class='toolbar'><button id='shuffleAll'>Shuffle all</button><button id='refreshBtn'>Refresh</button></div></div><div id='selectionBar' class='selectionBar'><div id='selectionCount'>0 selected</div><div class='selectionActions'><button id='addSelectedBtn'>Add selected to playlist</button><button id='clearSelectedBtn'>Clear selection</button></div></div><div class='sectionTitle' id='sectionTitle'>All Songs</div><div id='content'></div></main></div><div class='player'><div class='np'><div id='nowTitle' class='title'>Nothing playing</div><div id='nowArtist' class='sub'>Select a track</div></div><div class='controls'><div class='controlButtons'><button id='prevBtn'>⏮</button><button id='playBtn'>▶</button><button id='nextBtn'>⏭</button><button id='shuffleBtn'>🔀</button><button id='repeatBtn'>🔁 Off</button></div><div class='barWrap'><input id='seek' class='bar' type='range' min='0' max='100' value='0'></div></div><div class='timeWrap'><audio id='audio' preload='metadata'></audio><div class='sub' id='timeLabel'>0:00 / 0:00</div></div></div>
-<script src="/static/js/script.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Music Player</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-title">Music Player</div>
+        <div class="brand-version">v7.1.3</div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-btn active" data-view="all">All Songs</button>
+        <button class="nav-btn" data-view="playlists">Playlists</button>
+        <button class="nav-btn" data-view="artists">Artists</button>
+        <button class="nav-btn" data-view="folders">Folders</button>
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Saved playlists</div>
+        <div id="savedPlaylists" class="saved-playlists"></div>
+      </div>
+    </aside>
+    <main class="main-panel">
+      <header class="topbar">
+        <input id="searchInput" class="search-input" placeholder="Search songs, artists, folders" />
+        <div class="topbar-actions">
+          <button id="shuffleAllBtn" class="ghost-btn">Shuffle all</button>
+          <button id="refreshBtn" class="ghost-btn">Refresh</button>
+        </div>
+      </header>
+      <section class="selection-bar">
+        <div id="selectedCount" class="selected-count">0 selected</div>
+        <div class="selection-actions">
+          <button id="addToPlaylistBtn" class="primary-btn" disabled>Add selected to playlist</button>
+          <button id="clearSelectionBtn" class="ghost-btn" disabled>Clear selection</button>
+        </div>
+      </section>
+      <section class="content-card">
+        <div class="content-head">
+          <h2 id="contentTitle">All Songs</h2>
+          <div id="contentMeta" class="content-meta"></div>
+        </div>
+        <div id="tracksContainer" class="tracks-container"></div>
+      </section>
+    </main>
+  </div>
+  <footer class="player-bar">
+    <div class="now-playing">
+      <div id="nowTitle" class="now-title">Nothing playing</div>
+      <div id="nowArtist" class="now-artist">Select a track</div>
+    </div>
+    <div class="player-controls">
+      <div class="control-row">
+        <button id="prevBtn" class="icon-btn">⏮</button>
+        <button id="playPauseBtn" class="icon-btn">▶</button>
+        <button id="nextBtn" class="icon-btn">⏭</button>
+        <button id="shuffleToggleBtn" class="icon-btn">🔀</button>
+        <button id="repeatToggleBtn" class="icon-btn">Off</button>
+      </div>
+      <div class="seek-row">
+        <span id="currentTime">0:00</span>
+        <input id="seekBar" type="range" min="0" max="100" value="0" />
+        <span id="totalTime">0:00</span>
+      </div>
+    </div>
+  </footer>
+  <audio id="audioPlayer" preload="metadata"></audio>
+  <div id="playlistModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="true"></div>
+    <div class="modal-dialog">
+      <div class="modal-head">
+        <h3>Add to playlist</h3>
+        <button id="closePlaylistModalBtn" class="close-btn">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="lastPlaylistBlock" class="last-playlist-block hidden">
+          <div class="muted-label">Last added to</div>
+          <button id="lastPlaylistBtn" class="playlist-chip"></button>
+        </div>
+        <div class="muted-label">Existing playlists</div>
+        <div id="playlistList" class="playlist-list"></div>
+        <div class="muted-label">Create a new playlist</div>
+        <div class="new-playlist-row">
+          <input id="newPlaylistName" class="search-input" placeholder="New playlist name" />
+          <button id="createPlaylistBtn" class="primary-btn">Create + add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/static/js/script.js" defer></script>
+  <script src="/static/js/playlist_modal_patch.js" defer></script>
+</body>
+</html>

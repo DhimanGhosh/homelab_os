@@ -2,12 +2,15 @@ services:
   music-player:
     build: .
     container_name: music-player
-    restart: unless-stopped
+    environment:
+      PORT: "8140"
+      APP_NAME: "Music Player"
+      APP_VERSION: "7.1.3"
+      MUSIC_ROOT: "/mnt/nas/media/music"
+      APP_DATA_DIR: "/mnt/nas/homelab/runtime/music-player/data"
     ports:
       - "127.0.0.1:8140:8140"
-    environment:
-      MUSIC_ROOT: /mnt/nas/media/music
-      APP_DATA_DIR: /mnt/nas/homelab/runtime/music-player/data
     volumes:
       - /mnt/nas/media/music:/mnt/nas/media/music:ro
       - /mnt/nas/homelab/runtime/music-player/data:/mnt/nas/homelab/runtime/music-player/data
+    restart: unless-stopped

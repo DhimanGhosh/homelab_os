@@ -87,14 +87,41 @@
       margin-bottom: 6px
     }
 
+    .inputWrap {
+      position: relative
+    }
+
     input {
       width: 100%;
       background: #081428;
       color: #fff;
       border: 1px solid #223b63;
       border-radius: 14px;
-      padding: 12px 14px;
+      padding: 12px 46px 12px 14px;
       font-size: 16px
+    }
+
+    .clearInput {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 1px solid #2a446d;
+      background: #10203b;
+      color: #fff;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      cursor: pointer;
+      line-height: 1
+    }
+
+    .inputWrap.hasValue .clearInput {
+      display: flex
     }
 
     button {
@@ -155,24 +182,56 @@
           <h1>Song Downloader</h1>
           <p class="muted">Search by song name and artists, download the full audio song, optionally rename it, and
             auto-transfer it into <span class="mono">/mnt/nas/media/music</span>.</p>
-          <p class="muted">This app may use the Media Downloader API to fetch audio when that API is reachable. It falls
-            back to direct yt-dlp when needed.</p>
+          <p class="muted" id="apiNote">This app may use the Media Downloader API to fetch audio when that API is
+            reachable. It falls back to direct yt-dlp when needed.</p>
         </div>
         <div style="flex:1;text-align:right"><span class="pill" id="versionPill">v1.0.1</span></div>
       </div>
-      <p class="muted" id="apiNote"></p>
     </div>
 
     <div class="card">
       <div class="grid">
-        <div class="full"><label for="youtubeUrl">YouTube link (optional — overrides search fields)</label><input
-            id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=uZ0ahnabnPk"></div>
-        <div><label for="song">Song name</label><input id="song" placeholder="Jonaki"></div>
-        <div><label for="artists">Artist name(s)</label><input id="artists" placeholder="Papon"></div>
-        <div><label for="album">Album / movie name (optional)</label><input id="album" placeholder="Bhooter Bhabishyat">
+        <div class="full">
+          <label for="youtubeUrl">YouTube link (optional — overrides search fields)</label>
+          <div class="inputWrap">
+            <input id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=uZ0ahnabnPk">
+            <button class="clearInput" data-clear-target="youtubeUrl" type="button">×</button>
+          </div>
         </div>
-        <div><label for="rename">Rename stem (optional)</label><input id="rename" placeholder="Jonaki - Papon"></div>
-        <div class="full"><label for="dest">Destination path</label><input id="dest" placeholder="/mnt/nas/media/music">
+        <div>
+          <label for="song">Song name</label>
+          <div class="inputWrap">
+            <input id="song" placeholder="Jonaki">
+            <button class="clearInput" data-clear-target="song" type="button">×</button>
+          </div>
+        </div>
+        <div>
+          <label for="artists">Artist name(s)</label>
+          <div class="inputWrap">
+            <input id="artists" placeholder="Papon">
+            <button class="clearInput" data-clear-target="artists" type="button">×</button>
+          </div>
+        </div>
+        <div>
+          <label for="album">Album / movie name (optional)</label>
+          <div class="inputWrap">
+            <input id="album" placeholder="Bhooter Bhabishyat">
+            <button class="clearInput" data-clear-target="album" type="button">×</button>
+          </div>
+        </div>
+        <div>
+          <label for="rename">Rename stem (optional)</label>
+          <div class="inputWrap">
+            <input id="rename" placeholder="Jonaki - Papon">
+            <button class="clearInput" data-clear-target="rename" type="button">×</button>
+          </div>
+        </div>
+        <div class="full">
+          <label for="dest">Destination path</label>
+          <div class="inputWrap">
+            <input id="dest" placeholder="/mnt/nas/media/music">
+            <button class="clearInput" data-clear-target="dest" type="button">×</button>
+          </div>
         </div>
       </div>
       <div class="row" style="margin-top:14px;align-items:center">
@@ -196,12 +255,34 @@
     const destInput = document.getElementById('dest');
     const versionPill = document.getElementById('versionPill');
 
+    function syncInputWrap(input) {
+      const wrap = input.closest('.inputWrap');
+      if (!wrap) return;
+      wrap.classList.toggle('hasValue', !!input.value);
+    }
+
+    document.querySelectorAll('.inputWrap input').forEach(input => {
+      syncInputWrap(input);
+      input.addEventListener('input', () => syncInputWrap(input));
+    });
+
+    document.querySelectorAll('.clearInput').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.clearTarget);
+        if (!target) return;
+        target.value = '';
+        syncInputWrap(target);
+        target.focus();
+      });
+    });
+
     async function fetchStatus() {
       const res = await fetch('/api/status');
       const data = await res.json();
       versionPill.textContent = `v${data.version || '1.0.1'}`;
-      apiNote.textContent = `${data.note} Backend in use now: ${data.media_downloader_available ? 'Media Downloader API' : 'direct yt-dlp fallback'}`;
+      apiNote.textContent = `This app may use the Media Downloader API to fetch audio when that API is reachable. It falls back to direct yt-dlp when needed. Backend in use now: ${data.media_downloader_available ? 'Media Downloader API' : 'direct yt-dlp fallback'}`;
       if (!destInput.value) destInput.value = data.default_destination || '/mnt/nas/media/music';
+      syncInputWrap(destInput);
       renderJobs(data.jobs || []);
     }
 
