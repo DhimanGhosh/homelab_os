@@ -1,123 +1,110 @@
-
 from __future__ import annotations
 
-import json
 import subprocess
-import tempfile
 from pathlib import Path
+import os
 
-from homelab_os.core.config import Settings, ensure_runtime_dirs
-from homelab_os.core.plugin_manager.installer import PluginInstaller
+import yaml
+
+from homelab_os.core.config import Settings
 from homelab_os.core.plugin_manager.registry import PluginRegistry
 from homelab_os.core.plugin_manager.runtime import PluginRuntime
 from homelab_os.core.services.network_stack import NetworkStackService
-from homelab_os.core.services.reverse_proxy import ReverseProxyService
-from homelab_os.core.services.systemd_service import CoreServiceManager
 
 
 class RecoveryService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.registry = PluginRegistry(settings.manifests_dir / 'installed_plugins.json')
-        self.runtime = PluginRuntime(settings.runtime_installed_plugins_dir, settings.manifests_dir / 'plugin_state.json', settings=settings)
         self.stack = NetworkStackService(settings)
-        self.proxy = ReverseProxyService(settings)
-        self.installer = PluginInstaller(
-            settings=settings,
-            installed_plugins_dir=settings.runtime_installed_plugins_dir,
-            registry_file=settings.manifests_dir / 'installed_plugins.json',
-            state_file=settings.manifests_dir / 'plugin_state.json',
-        )
-        self.core = CoreServiceManager(settings)
+        self.runtime = PluginRuntime(settings.runtime_installed_plugins_dir, settings.manifests_dir / 'plugin_state.json', settings=settings)
+        self.registry = PluginRegistry(settings.manifests_dir / 'installed_plugins.json')
 
-    def _run(self, cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
-        return subprocess.run(cmd, check=check, capture_output=True, text=True)
+    def _run(self, cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
+        return subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=check, capture_output=True, text=True)
 
-    def ensure_docker_root(self) -> bool:
-        self.settings.docker_root_dir.mkdir(parents=True, exist_ok=True)
-        daemon_json = Path('/etc/docker/daemon.json')
-        desired = {'data-root': str(self.settings.docker_root_dir)}
-        current: dict = {}
-        result = self._run(['sudo', 'cat', str(daemon_json)], check=False)
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                current = json.loads(result.stdout)
-            except json.JSONDecodeError:
-                current = {}
-        if current.get('data-root') == desired['data-root']:
-            return False
-        current.update(desired)
-        with tempfile.NamedTemporaryFile('w', delete=False, encoding='utf-8') as tmp:
-            json.dump(current, tmp, indent=2)
-            tmp.write('\n')
-            tmp_path = Path(tmp.name)
+    def _docker_root(self) -> tuple[str, bool]:
+        current = ''
         try:
-            self._run(['sudo', 'mkdir', '-p', str(daemon_json.parent)])
-            self._run(['sudo', 'cp', str(tmp_path), str(daemon_json)])
-            self._run(['sudo', 'systemctl', 'restart', 'docker'])
-        finally:
-            tmp_path.unlink(missing_ok=True)
-        return True
+            result = self._run(['docker', 'info', '--format', '{{.DockerRootDir}}'], check=False)
+            current = (result.stdout or '').strip()
+        except Exception:
+            current = ''
+        target = str(self.settings.docker_root_dir)
+        return current or target, current != target if current else False
 
-    def ensure_core_services(self) -> None:
-        self.core.install_service()
-        self.core.enable_and_start()
-        self.proxy.ensure_main_caddyfile()
-        self.proxy.apply_core_route()
+    def _compose_dir(self, plugin_id: str) -> Path:
+        return self.settings.runtime_installed_plugins_dir / plugin_id / 'docker'
 
-    def ensure_installed_plugins_running(self) -> dict[str, str]:
-        started: dict[str, str] = {}
-        installed = self.registry.list_all()
-        for plugin_id in sorted(installed.keys()):
-            if plugin_id == 'control-center':
-                continue
-            try:
-                self.runtime.start_plugin(plugin_id)
-                url = self.stack.ensure_plugin_route(plugin_id)
-                if url:
-                    started[plugin_id] = url
-            except Exception:
-                continue
-        return started
+    def _compose_images(self, plugin_id: str) -> list[str]:
+        compose_file = self._compose_dir(plugin_id) / 'docker-compose.yml'
+        if not compose_file.exists():
+            return []
+        payload = yaml.safe_load(compose_file.read_text(encoding='utf-8')) or {}
+        services = payload.get('services', {}) or {}
+        return [str(service.get('image')) for service in services.values() if service.get('image')]
 
-    def ensure_plugin_installed_and_started(self, plugin_id: str) -> dict:
-        plugin = self.registry.get_plugin(plugin_id)
-        archive_candidates = sorted(self.settings.build_dir.glob(f'{plugin_id}.v*.tgz'))
-        archive_path = archive_candidates[-1] if archive_candidates else None
-        if not plugin and archive_path:
-            self.installer.install_plugin(archive_path)
-        result = self.runtime.start_plugin(plugin_id)
-        return result
+    def _layer_issue(self, exc: Exception) -> bool:
+        text = str(exc).lower()
+        return 'layer does not exist' in text or 'unable to get image' in text
 
-    def ensure_pihole(self) -> dict:
-        plugin_dir = self.settings.plugins_dir / 'pihole'
-        data_dir = self.settings.homelab_root / 'runtime' / 'pihole' / 'data'
-        data_dir.mkdir(parents=True, exist_ok=True)
-        archive_candidates = sorted(self.settings.build_dir.glob('pihole.v*.tgz'))
-        if not self.registry.get_plugin('pihole') and archive_candidates:
-            self.installer.install_plugin(archive_candidates[-1])
-        if not self.registry.get_plugin('pihole') and plugin_dir.exists():
-            raise RuntimeError('Pi-hole is not installed and no built archive was found')
-        result = self.runtime.start_plugin('pihole')
-        return result
+    def _repair_images(self, plugin_id: str) -> None:
+        self._run(['docker', 'system', 'prune', '-a', '--volumes', '-f'], check=False)
+        self._run(['systemctl', 'restart', 'docker'], check=False)
+        for image in self._compose_images(plugin_id):
+            self._run(['docker', 'pull', image], check=False)
 
-    def run_self_heal(self, include_pihole: bool = True) -> dict:
-        ensure_runtime_dirs(self.settings)
-        docker_root_changed = self.ensure_docker_root()
-        self.ensure_core_services()
+    def _reset_pihole_password(self) -> None:
+        password = os.getenv('PIHOLE_PASSWORD', 'admin').strip()
+        if not password:
+            return
+        self._run(['docker', 'exec', 'pihole', 'pihole', 'setpassword', password], check=False)
+
+    def _start_with_repair(self, plugin_id: str) -> dict:
+        try:
+            return self.runtime.start_plugin(plugin_id)
+        except subprocess.CalledProcessError as exc:
+            if not self._layer_issue(exc):
+                raise
+            self._repair_images(plugin_id)
+            return self.runtime.start_plugin(plugin_id)
+
+    def run(self) -> dict:
+        docker_root, changed = self._docker_root()
         rebound = self.stack.reconcile_routes(include_core=True)
-        started = self.ensure_installed_plugins_running()
-        pihole_result = None
-        if include_pihole:
+        started: dict[str, str] = {}
+        repaired: list[str] = []
+        warnings: list[str] = []
+        for plugin_id in sorted(self.registry.list_all().keys()):
             try:
-                pihole_result = self.ensure_pihole()
-                rebound = self.stack.reconcile_routes(include_core=True)
+                result = self._start_with_repair(plugin_id)
+                if result.get('public_url'):
+                    started[plugin_id] = result['public_url']
+            except subprocess.CalledProcessError as exc:
+                if self._layer_issue(exc):
+                    repaired.append(plugin_id)
+                    try:
+                        result = self.runtime.start_plugin(plugin_id)
+                        if result.get('public_url'):
+                            started[plugin_id] = result['public_url']
+                    except Exception as retry_exc:
+                        warnings.append(f"{plugin_id}: {retry_exc}")
+                else:
+                    warnings.append(f"{plugin_id}: {exc}")
             except Exception as exc:
-                pihole_result = {'error': str(exc)}
+                warnings.append(f"{plugin_id}: {exc}")
+        pihole = None
+        if 'pihole' in self.registry.list_all():
+            try:
+                self._reset_pihole_password()
+                pihole = self.runtime.healthcheck_plugin('pihole')
+            except Exception as exc:
+                warnings.append(f"pihole password/health: {exc}")
         return {
-            'docker_root': str(self.settings.docker_root_dir),
-            'docker_root_changed': docker_root_changed,
+            'docker_root': docker_root,
+            'docker_root_changed': changed,
             'rebound_routes': rebound,
             'started_plugins': started,
-            'pihole': pihole_result,
+            'repaired_plugins': repaired,
+            'warnings': warnings,
+            'pihole': pihole,
         }
