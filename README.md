@@ -101,8 +101,13 @@ For plugin container/UI/backend changes:
 
 ```bash
 cd ~/homelab_os
+python3 bootstrap.py
 source .venv/bin/activate
+
 homelabctl build-all-plugins --env-file .env
+sudo systemctl restart homelab-os-core.service
+
+homelabctl uninstall-plugin <plugin-id> --env-file .env
 homelabctl install-plugin build/<plugin>.v<version>.tgz --env-file .env
 homelabctl start-plugin <plugin-id> --env-file .env
 ```
