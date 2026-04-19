@@ -1,43 +1,48 @@
 from __future__ import annotations
 
+import json
 import shutil
+import tarfile
+import tempfile
 from pathlib import Path
-from typing import Any
+
+from homelab_os.core.plugin_manager.registry import PluginRegistry
+from homelab_os.core.services.process_runner import ProcessRunner
+from homelab_os.core.services.reverse_proxy import ReverseProxyService
+from homelab_os.core.services.state_store import StateStore
 
 
-def prepare_install_target(installed_plugins_root: str | Path, plugin_id: str, archive_version: str | None = None) -> dict[str, Any]:
-    """
-    Ensures plugin install target is in a clean state before extraction/copy.
-    If an old directory exists from a failed install, it is moved aside first.
-    """
-    root = Path(installed_plugins_root)
-    target = root / plugin_id
-    backup = None
+class PluginInstaller:
+    def __init__(
+        self,
+        settings,
+        installed_plugins_dir: Path,
+        registry_file: Path,
+        state_file: Path,
+    ) -> None:
+        self.settings = settings
+        self.installed_plugins_dir = installed_plugins_dir
+        self.registry = PluginRegistry(registry_file)
+        self.state_store = StateStore(state_file)
+        self.runner = ProcessRunner()
+        self.proxy = ReverseProxyService(settings)
+        self.installed_plugins_dir.mkdir(parents=True, exist_ok=True)
 
-    if target.exists():
-        backup = root / f"_{plugin_id}_stale"
-        if backup.exists():
-            shutil.rmtree(backup, ignore_errors=True)
-        target.rename(backup)
+    def _read_manifest(self, plugin_dir: Path) -> dict:
+        manifest_path = plugin_dir / "plugin.json"
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"plugin.json not found in {plugin_dir}")
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    return {
-        "ok": True,
-        "target": str(target),
-        "backup": str(backup) if backup else None,
-        "plugin_id": plugin_id,
-        "archive_version": archive_version,
-    }
+    def _docker_compose_cmd(self, plugin_id: str, *args: str) -> list[str]:
+        return ["docker", "compose", "-p", plugin_id, *args]
 
+    def _prepare_public_url(self, plugin_id: str, manifest: dict) -> str | None:
+        internal_port = manifest.get("network", {}).get("internal_port")
+        if not internal_port:
+            return None
+        return self.proxy.apply_plugin_route(plugin_id, int(internal_port))
 
-<<<<<<< HEAD
-def cleanup_stale_backup(installed_plugins_root: str | Path, plugin_id: str) -> dict[str, Any]:
-    root = Path(installed_plugins_root)
-    backup = root / f"_{plugin_id}_stale"
-    if backup.exists():
-        shutil.rmtree(backup, ignore_errors=True)
-        return {"ok": True, "removed": str(backup)}
-    return {"ok": True, "removed": None}
-=======
     def _cleanup_existing_install(self, plugin_id: str) -> None:
         existing = self.registry.get_plugin(plugin_id)
         if existing:
@@ -122,4 +127,3 @@ def cleanup_stale_backup(installed_plugins_root: str | Path, plugin_id: str) -> 
         if not plugin_entry:
             return {"ok": True, "plugin_id": plugin_id, "message": "Plugin already absent"}
         return {"ok": True, "plugin_id": plugin_id}
->>>>>>> 4c9d2e2

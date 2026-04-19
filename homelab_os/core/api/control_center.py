@@ -1,45 +1,30 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-from typing import Any
+from shutil import disk_usage
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import HTMLResponse
+
+from homelab_os import __version__
+from homelab_os.core.config import ensure_runtime_dirs, load_settings
+from homelab_os.core.plugin_manager import PluginInstaller
+from homelab_os.core.plugin_manager.registry import PluginRegistry
+from homelab_os.core.plugin_manager.runtime import PluginRuntime
+from homelab_os.core.services.app_catalog import load_app_catalog
+from homelab_os.core.services.jobs import JobStore
+from homelab_os.core.services.logging_service import LoggingService
+from homelab_os.core.services.reverse_proxy import ReverseProxyService
+
+router = APIRouter()
 
 
-def inject_patch_script(index_html: str) -> str:
-    patch = """
-<script>
-document.addEventListener('click', function (event) {
-  const summary = event.target.closest('details summary');
-  if (!summary) return;
-  event.stopPropagation();
-}, true);
-
-document.addEventListener('toggle', function (event) {
-  const details = event.target;
-  if (!(details instanceof HTMLDetailsElement)) return;
-  if (!details.classList.contains('bundle-details')) return;
-  if (!details.open) return;
-  document.querySelectorAll('details.bundle-details[open]').forEach(function (node) {
-    if (node !== details) node.removeAttribute('open');
-  });
-}, true);
-</script>
-"""
-    if "</body>" in index_html:
-        return index_html.replace("</body>", patch + "\n</body>")
-    return index_html + patch
+def _gb(value: int) -> float:
+    return round(value / (1024 ** 3), 2)
 
 
-<<<<<<< HEAD
-def patch_index_file(index_path: str | Path) -> dict[str, Any]:
-    path = Path(index_path)
-    if not path.exists():
-        return {"ok": False, "error": f"missing file: {path}"}
-    original = path.read_text(encoding="utf-8")
-    updated = inject_patch_script(original)
-    path.write_text(updated, encoding="utf-8")
-    return {"ok": True, "path": str(path)}
-=======
 def _usage(path: Path) -> dict:
     try:
         total, used, free = disk_usage(path)
@@ -343,4 +328,3 @@ def control_center_plugin_action(plugin_id: str, action: str, background_tasks: 
     logs.append_job_log(job["job_id"], f"Queued {action} for {plugin_id}")
     background_tasks.add_task(_runtime_job, job["job_id"], action, plugin_id)
     return {"job_id": job["job_id"]}
->>>>>>> 4c9d2e2

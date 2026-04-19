@@ -23,8 +23,6 @@ function progressWidth(job) {
   return `${Math.max(0, Math.min(100, value))}%`;
 }
 
-<<<<<<< HEAD
-=======
 function rememberOpenLogs() {
   document.querySelectorAll('.logs-box[data-job-id]').forEach((node) => {
     const id = node.dataset.jobId;
@@ -33,7 +31,6 @@ function rememberOpenLogs() {
   });
 }
 
->>>>>>> 4c9d2e2
 function renderJobs(jobs) {
   rememberOpenLogs();
   const container = el('jobsContainer');
@@ -68,15 +65,9 @@ function renderJobs(jobs) {
       </div>
       <div class="progress-wrap">
         <div class="progress-bar"><span style="width:${progressWidth(job)}"></span></div>
-<<<<<<< HEAD
-        <div class="progress-label">${job.progress || 0}%</div>
-      </div>
-      <details class="logs-box">
-=======
         <div class="progress-label">${Number(job.progress || 0)}%</div>
       </div>
       <details class="logs-box" data-job-id="${job.id}">
->>>>>>> 4c9d2e2
         <summary>Logs</summary>
         <pre>${(job.logs || []).join('\n')}</pre>
       </details>
