@@ -1,7 +1,8 @@
 const el = (id) => document.getElementById(id);
+const openLogs = new Set();
 
 async function fetchHealth() {
-  const res = await fetch('/api/health');
+  const res = await fetch('/api/health', { cache: 'no-store' });
   const data = await res.json();
   el('healthStatus').textContent = `OK • v${data.version}`;
 }
@@ -22,7 +23,19 @@ function progressWidth(job) {
   return `${Math.max(0, Math.min(100, value))}%`;
 }
 
+<<<<<<< HEAD
+=======
+function rememberOpenLogs() {
+  document.querySelectorAll('.logs-box[data-job-id]').forEach((node) => {
+    const id = node.dataset.jobId;
+    if (node.open) openLogs.add(id);
+    else openLogs.delete(id);
+  });
+}
+
+>>>>>>> 4c9d2e2
 function renderJobs(jobs) {
+  rememberOpenLogs();
   const container = el('jobsContainer');
   container.innerHTML = '';
   if (!jobs.length) {
@@ -55,19 +68,31 @@ function renderJobs(jobs) {
       </div>
       <div class="progress-wrap">
         <div class="progress-bar"><span style="width:${progressWidth(job)}"></span></div>
+<<<<<<< HEAD
         <div class="progress-label">${job.progress || 0}%</div>
       </div>
       <details class="logs-box">
+=======
+        <div class="progress-label">${Number(job.progress || 0)}%</div>
+      </div>
+      <details class="logs-box" data-job-id="${job.id}">
+>>>>>>> 4c9d2e2
         <summary>Logs</summary>
         <pre>${(job.logs || []).join('\n')}</pre>
       </details>
     `;
     container.appendChild(card);
+    const details = card.querySelector('.logs-box');
+    if (openLogs.has(job.id)) details.open = true;
+    details.addEventListener('toggle', (event) => {
+      if (event.currentTarget.open) openLogs.add(job.id);
+      else openLogs.delete(job.id);
+    });
   });
 }
 
 async function fetchJobs() {
-  const res = await fetch('/api/jobs');
+  const res = await fetch('/api/jobs', { cache: 'no-store' });
   const data = await res.json();
   renderJobs(data.jobs || []);
 }
@@ -95,6 +120,7 @@ async function submitDownload(event) {
 }
 
 async function clearJobs() {
+  openLogs.clear();
   await fetch('/api/jobs/clear', { method: 'POST' });
   fetchJobs();
 }

@@ -73,6 +73,7 @@ def create_job(payload: dict) -> dict:
         "output_file": "",
         "final_file": "",
         "error": "",
+        "progress": 0,
     }
     with JOBS_LOCK:
         jobs = load_jobs()
@@ -154,11 +155,39 @@ def find_downloaded_file(download_dir: Path, marker: str) -> Path | None:
     return None
 
 
+<<<<<<< HEAD
 def update_progress_from_line(job_id: str, line: str) -> None:
     match = re.search(r"(\d{1,3}(?:\.\d+)?)%", line)
     if match:
         pct = int(float(match.group(1)))
         update_job(job_id, progress=max(1, min(99, pct)))
+=======
+
+
+def set_progress(job_id: str, value: int) -> None:
+    value = max(0, min(100, int(value)))
+    update_job(job_id, progress=value)
+
+
+def infer_album_from_rename(rename_to: str, song_name: str, artist_names: str, album_name: str) -> str:
+    rename_to = (rename_to or "").strip()
+    if album_name and album_name.strip() and album_name.strip().lower() != "unknown":
+        return album_name.strip()
+    if not rename_to:
+        return "Unknown"
+    base = rename_to[:-4] if rename_to.lower().endswith('.mp3') else rename_to
+    parts = [part.strip() for part in base.split(' - ') if part.strip()]
+    if len(parts) >= 3:
+        return parts[1]
+    return "Unknown"
+
+
+def _extract_progress_percent(line: str) -> int | None:
+    match = re.search(r'\[download\]\s+(\d+(?:\.\d+)?)%', line)
+    if not match:
+        return None
+    return int(float(match.group(1)))
+>>>>>>> 4c9d2e2
 
 
 def run_download_job(job_id: str) -> None:
@@ -169,8 +198,13 @@ def run_download_job(job_id: str) -> None:
     payload = job["payload"]
     song_name = payload.get("song_name", "").strip()
     artist_names = payload.get("artist_names", "").strip()
-    album_name = payload.get("album_name", "").strip() or "Unknown"
     rename_to = payload.get("rename_to", "").strip()
+    album_name = infer_album_from_rename(
+        rename_to=rename_to,
+        song_name=song_name,
+        artist_names=artist_names,
+        album_name=payload.get("album_name", "").strip() or "Unknown",
+    )
     auto_move = bool(payload.get("auto_move", True))
 
     try:
@@ -196,12 +230,14 @@ def run_download_job(job_id: str) -> None:
             "--audio-quality", "0",
             "--embed-metadata",
             "--no-playlist",
+            "--newline",
             "-o", output_template,
             source,
         ]
 
         append_log(job_id, "Running yt-dlp")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+<<<<<<< HEAD
         assert proc.stdout is not None
         for raw_line in proc.stdout:
             line = raw_line.rstrip()
@@ -209,10 +245,23 @@ def run_download_job(job_id: str) -> None:
                 continue
             append_log(job_id, line)
             update_progress_from_line(job_id, line)
+=======
+        last_progress = 1
+        if proc.stdout is not None:
+            for raw_line in proc.stdout:
+                line = raw_line.rstrip()
+                if line:
+                    append_log(job_id, line)
+                    progress = _extract_progress_percent(line)
+                    if progress is not None:
+                        last_progress = max(last_progress, progress)
+                        set_progress(job_id, last_progress)
+>>>>>>> 4c9d2e2
         return_code = proc.wait()
         if return_code != 0:
             raise RuntimeError(f"yt-dlp failed with exit code {return_code}")
 
+        set_progress(job_id, max(last_progress, 95))
         downloaded = find_downloaded_file(DOWNLOADS_DIR, marker)
         if not downloaded:
             raise RuntimeError("Downloaded file not found after yt-dlp run")
@@ -223,11 +272,27 @@ def run_download_job(job_id: str) -> None:
         final_path = safe_destination((MUSIC_ROOT if auto_move else DOWNLOADS_DIR) / target_name)
 
         shutil.move(str(downloaded), str(final_path))
+<<<<<<< HEAD
         update_job(job_id, status="completed", progress=100, output_file=str(downloaded), final_file=str(final_path), payload={**payload, "song_name": song_name, "artist_names": artist_names, "album_name": album_name})
+=======
+        update_job(
+            job_id,
+            status="completed",
+            output_file=str(downloaded),
+            final_file=str(final_path),
+            progress=100,
+            payload={
+                **payload,
+                "song_name": song_name,
+                "artist_names": artist_names,
+                "album_name": album_name,
+            },
+        )
+>>>>>>> 4c9d2e2
         append_log(job_id, f"Saved file: {final_path}")
 
     except Exception as exc:
-        update_job(job_id, status="failed", error=str(exc))
+        update_job(job_id, status="failed", error=str(exc), progress=100)
         append_log(job_id, f"ERROR: {exc}")
 
 
@@ -243,13 +308,15 @@ def static_files(filename: str):
 
 @app.route("/api/health")
 def health():
-    return jsonify({
+    response = jsonify({
         "status": "ok",
         "name": APP_NAME,
         "version": APP_VERSION,
         "music_root": str(MUSIC_ROOT),
         "downloads_dir": str(DOWNLOADS_DIR),
     })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
 
 
 @app.route("/api/jobs", methods=["GET"])
