@@ -1,7 +1,6 @@
 const el = (id) => document.getElementById(id);
 const openLogs = new Set();
 let librarySongs = [];
-let filteredLibrarySongs = [];
 
 async function fetchHealth() {
   const res = await fetch('/api/health', { cache: 'no-store' });
@@ -30,84 +29,56 @@ function clearInputs(ids) {
   });
 }
 
-
 function parseSongFilename(filePath) {
   const rawName = (filePath || '').split('/').pop() || '';
   const base = rawName.replace(/\.mp3$/i, '').trim();
-  if (!base) {
-    return { song_name: '', album_name: '', artist_names: '' };
-  }
-
-  const normalized = base
-    .replace(/[–—]/g, '-')
-    .replace(/[，]/g, ',')
-    .replace(/\s+-\s+/g, ' - ')
-    .trim();
-
+  if (!base) return { song_name: '', album_name: '', artist_names: '' };
+  const normalized = base.replace(/[–—]/g, '-').replace(/[，]/g, ',').replace(/\s+-\s+/g, ' - ').trim();
   const parts = normalized.split(' - ').map((part) => part.trim()).filter(Boolean);
   if (parts.length >= 3) {
-    return {
-      song_name: parts[0],
-      album_name: parts.slice(1, -1).join(' - '),
-      artist_names: parts[parts.length - 1],
-    };
+    return { song_name: parts[0], album_name: parts.slice(1, -1).join(' - '), artist_names: parts[parts.length - 1] };
   }
   if (parts.length === 2) {
-    return {
-      song_name: parts[0],
-      album_name: '',
-      artist_names: parts[1],
-    };
+    return { song_name: parts[0], album_name: '', artist_names: parts[1] };
   }
   return { song_name: normalized, album_name: '', artist_names: '' };
 }
 
 function autofillRetagFieldsFromSelection() {
   const selected = el('selected_file').value;
-  if (!selected) {
-    if (el('retag_song_name')) el('retag_song_name').value = '';
-    if (el('retag_album_name')) el('retag_album_name').value = '';
-    if (el('retag_artist_names')) el('retag_artist_names').value = '';
-    return;
-  }
   const parsed = parseSongFilename(selected);
-
-  if (el('retag_song_name')) {
-    el('retag_song_name').value = parsed.song_name || '';
-  }
-  if (el('retag_album_name')) {
-    el('retag_album_name').value = parsed.album_name || '';
-  }
-  if (el('retag_artist_names')) {
-    el('retag_artist_names').value = parsed.artist_names || '';
-  }
+  el('retag_song_name').value = parsed.song_name || '';
+  el('retag_album_name').value = parsed.album_name || '';
+  el('retag_artist_names').value = parsed.artist_names || '';
 }
 
 function renderLibrarySongOptions(songs, preferredValue = '') {
   const select = el('selected_file');
   const search = (el('library_song_search')?.value || '').trim().toLowerCase();
-  filteredLibrarySongs = songs.filter((song) => !search || song.path.toLowerCase().includes(search) || (song.display || song.name || '').toLowerCase().includes(search));
+  const filtered = songs.filter((song) => {
+    if (!search) return true;
+    return (song.path || '').toLowerCase().includes(search) || (song.name || '').toLowerCase().includes(search) || (song.label || '').toLowerCase().includes(search);
+  });
 
+  const currentValue = preferredValue || select.value;
   select.innerHTML = '<option value="">Select a song from /mnt/nas/media/music</option>';
-  filteredLibrarySongs.forEach((song) => {
+  filtered.forEach((song) => {
     const option = document.createElement('option');
     option.value = song.path;
-    option.textContent = song.display || song.name || song.path;
+    option.textContent = song.name;
+    option.title = song.path;
     select.appendChild(option);
   });
 
-  const currentValue = preferredValue || '';
-  if (currentValue && Array.from(select.options).some((option) => option.value === currentValue)) {
+  if (currentValue && filtered.some((song) => song.path === currentValue)) {
     select.value = currentValue;
-  } else if (filteredLibrarySongs.length === 1) {
-    select.value = filteredLibrarySongs[0].path;
+  } else if (filtered.length === 1) {
+    select.value = filtered[0].path;
   } else {
     select.value = '';
   }
-
   autofillRetagFieldsFromSelection();
 }
-
 
 function progressWidth(job) {
   const value = Number(job.progress || 0);
@@ -130,7 +101,6 @@ function renderJobs(jobs) {
     container.innerHTML = '<div class="empty-state">No jobs yet.</div>';
     return;
   }
-
   jobs.forEach((job) => {
     const song = job.payload?.song_name || job.payload?.selected_file || '—';
     const artists = job.payload?.artist_names || '—';
@@ -185,24 +155,18 @@ async function fetchLibrarySongs() {
   const res = await fetch('/api/library-songs', { cache: 'no-store' });
   const data = await res.json();
   librarySongs = data.songs || [];
-  const previousValue = el('selected_file').value;
-  renderLibrarySongOptions(librarySongs, previousValue);
+  renderLibrarySongOptions(librarySongs, el('selected_file').value);
 }
-
 
 async function submitDownload(event) {
   event.preventDefault();
   const payload = buildPayload('');
-
   if (!payload.youtube_url && (!payload.song_name || !payload.artist_names)) {
     alert('Provide either a YouTube link or at least song name + artist names.');
     return;
   }
-
   const res = await fetch('/api/download', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!data.ok) {
@@ -219,15 +183,8 @@ async function submitRetag(event) {
     alert('Select a downloaded song to retag.');
     return;
   }
-  if (!payload.youtube_url && (!payload.song_name || !payload.artist_names)) {
-    alert('Provide either a YouTube link or at least song name + artist names for metadata lookup.');
-    return;
-  }
-
   const res = await fetch('/api/retag', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!data.ok) {
@@ -237,39 +194,50 @@ async function submitRetag(event) {
   fetchJobs();
 }
 
-async function clearJobs() {
-  openLogs.clear();
-  await fetch('/api/jobs/clear', { method: 'POST' });
+async function retagAll() {
+  const res = await fetch('/api/retag-all', { method: 'POST' });
+  const data = await res.json();
+  if (!data.ok) {
+    alert('Failed to queue retag-all job');
+    return;
+  }
   fetchJobs();
 }
 
-async function refreshJobsAndClearInputs() {
+async function clearJobs() {
+  openLogs.clear();
+  await fetch('/api/jobs/clear', { method: 'POST' });
+  await fetchJobs();
+}
+
+async function resetApp() {
   clearInputs([
     'song_name', 'artist_names', 'album_name', 'youtube_url', 'rename_to',
     'retag_song_name', 'retag_artist_names', 'retag_album_name', 'retag_youtube_url', 'selected_file', 'library_song_search',
   ]);
   await clearJobs();
-  await fetchJobs();
+  await fetchLibrarySongs();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.clear-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const target = el(btn.dataset.target);
-      if (target) target.value = '';
-      if (btn.dataset.target === 'library_song_search') renderLibrarySongOptions(librarySongs, '');
+      if (target) {
+        target.value = '';
+        if (btn.dataset.target === 'library_song_search') renderLibrarySongOptions(librarySongs, el('selected_file').value);
+      }
     });
   });
 
   el('downloadForm').addEventListener('submit', submitDownload);
   el('retagForm').addEventListener('submit', submitRetag);
-  el('refreshJobsBtn').addEventListener('click', refreshJobsAndClearInputs);
+  el('refreshJobsBtn').addEventListener('click', resetApp);
   el('clearJobsBtn').addEventListener('click', clearJobs);
   el('refreshLibraryBtn').addEventListener('click', fetchLibrarySongs);
+  el('retagAllBtn').addEventListener('click', retagAll);
   el('selected_file').addEventListener('change', autofillRetagFieldsFromSelection);
-  el('library_song_search').addEventListener('input', () => {
-    renderLibrarySongOptions(librarySongs, el('selected_file').value);
-  });
+  el('library_song_search').addEventListener('input', () => renderLibrarySongOptions(librarySongs, el('selected_file').value));
 
   fetchHealth();
   fetchJobs();

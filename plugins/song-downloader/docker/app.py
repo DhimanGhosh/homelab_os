@@ -16,7 +16,7 @@ import requests
 from flask import Flask, jsonify, request, send_from_directory
 
 APP_NAME = os.getenv("APP_NAME", "Song Downloader")
-APP_VERSION = os.getenv("APP_VERSION", "1.0.8")
+APP_VERSION = os.getenv("APP_VERSION", "1.0.9")
 PORT = int(os.getenv("PORT", "8145"))
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/song-downloader/data")).resolve()
@@ -172,19 +172,6 @@ def _extract_progress_percent(line: str) -> int | None:
     return int(float(match.group(1)))
 
 
-def parse_name_components(name: str) -> tuple[str, str, str]:
-    base = Path(name or '').name
-    if base.lower().endswith('.mp3'):
-        base = base[:-4]
-    normalized = re.sub(r'\s+', ' ', str(base).replace('，', ',').replace('–', '-').replace('—', '-')).strip()
-    parts = [part.strip() for part in normalized.split(' - ') if part.strip()]
-    if len(parts) >= 3:
-        return parts[0], ' - '.join(parts[1:-1]), parts[-1]
-    if len(parts) == 2:
-        return parts[0], '', parts[1]
-    return normalized, '', ''
-
-
 # -------------------------------
 # Metadata enrichment
 # -------------------------------
@@ -220,6 +207,16 @@ def parse_existing_lyrics(vtt_path: Path) -> str:
         seen.add(line)
         lines.append(line)
     return "\n".join(lines).strip()
+
+
+def parse_filename_metadata(file_name: str) -> dict:
+    base = Path(file_name).stem.replace('，', ',').replace('–', '-').replace('—', '-').strip()
+    parts = [part.strip() for part in base.split(' - ') if part.strip()]
+    if len(parts) >= 3:
+        return {'song_name': parts[0], 'album_name': ' - '.join(parts[1:-1]), 'artist_names': parts[-1]}
+    if len(parts) == 2:
+        return {'song_name': parts[0], 'album_name': '', 'artist_names': parts[1]}
+    return {'song_name': base, 'album_name': '', 'artist_names': ''}
 
 
 def fetch_source_info(source: str, temp_dir: Path, logger) -> dict:
@@ -311,7 +308,7 @@ def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) ->
         if metadata["thumbnail_file"]:
             ffmpeg_cmd.extend(["-i", metadata["thumbnail_file"]])
 
-        ffmpeg_cmd.extend(["-map_metadata", "-1", "-map", "0:a"])
+        ffmpeg_cmd.extend(["-map", "0:a"])
         if metadata["thumbnail_file"]:
             ffmpeg_cmd.extend(["-map", "1", "-c:v", "mjpeg"])
 
@@ -358,17 +355,11 @@ def run_download_job(job_id: str) -> None:
     song_name = payload.get("song_name", "").strip()
     artist_names = payload.get("artist_names", "").strip()
     rename_to = payload.get("rename_to", "").strip()
-    parsed_title, parsed_album, parsed_artists = parse_name_components(rename_to) if rename_to else ('', '', '')
-    if not song_name and parsed_title:
-        song_name = parsed_title
-    if not artist_names and parsed_artists:
-        artist_names = parsed_artists
-    payload_album = payload.get("album_name", "").strip() or parsed_album or "Unknown"
     album_name = infer_album_from_rename(
         rename_to=rename_to,
         song_name=song_name,
         artist_names=artist_names,
-        album_name=payload_album,
+        album_name=payload.get("album_name", "").strip() or "Unknown",
     )
     auto_move = bool(payload.get("auto_move", True))
 
@@ -474,6 +465,35 @@ def run_retag_job(job_id: str) -> None:
         append_log(job_id, f"ERROR: {exc}")
 
 
+
+
+def run_retag_all_job(job_id: str) -> None:
+    job = update_job(job_id, status='running', progress=1)
+    if not job:
+        return
+    try:
+        songs = []
+        for path in sorted(MUSIC_ROOT.rglob('*')):
+            if path.is_file() and path.suffix.lower() == '.mp3':
+                songs.append(path)
+        total = len(songs)
+        if not total:
+            raise FileNotFoundError('No songs found in music library')
+        for idx, target in enumerate(songs, start=1):
+            meta = parse_filename_metadata(target.name)
+            payload = {**meta, 'selected_file': safe_music_relative(target), 'youtube_url': ''}
+            append_log(job_id, f"Retagging {target.name}")
+            source = resolve_source(payload)
+            try:
+                enrich_file_metadata(target, payload, source, lambda line: append_log(job_id, line))
+            except Exception as exc:
+                append_log(job_id, f"Skipped {target.name}: {exc}")
+            update_job(job_id, progress=int(idx * 100 / total))
+        update_job(job_id, status='completed', progress=100)
+    except Exception as exc:
+        update_job(job_id, status='failed', error=str(exc), progress=100)
+        append_log(job_id, f'ERROR: {exc}')
+
 # -------------------------------
 # Routes
 # -------------------------------
@@ -517,11 +537,11 @@ def clear_jobs():
 @app.route("/api/library-songs", methods=["GET"])
 def library_songs():
     songs = []
-    for path in sorted(MUSIC_ROOT.rglob("*")):
-        if path.is_file() and path.suffix.lower() in {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".aac"}:
+    for path in sorted(MUSIC_ROOT.rglob('*')):
+        if path.is_file() and path.suffix.lower() == '.mp3':
             try:
                 rel = safe_music_relative(path)
-                songs.append({"path": rel, "name": path.name, "display": path.name})
+                songs.append({"path": rel, "name": path.name, "label": f"{path.name} — {rel}"})
             except Exception:
                 continue
     return jsonify({"songs": songs})
@@ -540,6 +560,13 @@ def retag():
     payload = request.get_json(force=True)
     job = create_job({**payload, "job_type": "retag"})
     threading.Thread(target=run_retag_job, args=(job["id"],), daemon=True).start()
+    return jsonify({"ok": True, "job_id": job["id"]})
+
+
+@app.route("/api/retag-all", methods=["POST"])
+def retag_all():
+    job = create_job({"job_type": "retag-all", "song_name": "All songs from filenames"})
+    threading.Thread(target=run_retag_all_job, args=(job["id"],), daemon=True).start()
     return jsonify({"ok": True, "job_id": job["id"]})
 
 

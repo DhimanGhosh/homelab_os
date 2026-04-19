@@ -13,7 +13,7 @@
       <div class="brand-header">
         <div>
           <div class="brand-title">Music Player</div>
-          <div id="brandVersion" class="brand-version">v7.2.1</div>
+          <div id="brandVersion" class="brand-version">v7.2.3</div>
         </div>
         <button id="closeSidebarBtn" class="icon-btn sidebar-close">✕</button>
       </div>
@@ -24,7 +24,8 @@
         <button class="nav-btn" data-view="albums">Albums</button>
         <button class="nav-btn" data-view="folders">Folders</button>
       </nav>
-            <div class="sidebar-section">
+      <div id="currentContext" class="current-context hidden"></div>
+      <div class="sidebar-section">
         <div class="sidebar-label">Saved playlists</div>
         <div id="savedPlaylists" class="saved-playlists"></div>
       </div>
@@ -41,6 +42,7 @@
         </div>
         <div class="topbar-actions">
           <button id="shuffleAllBtn" class="ghost-btn">Shuffle all</button>
+          <button id="settingsBtn" class="ghost-btn">Settings</button>
           <button id="refreshBtn" class="ghost-btn">Refresh</button>
         </div>
       </header>
@@ -75,7 +77,7 @@
     <div class="now-playing">
       <div id="nowTitle" class="now-title">Nothing playing</div>
       <div id="nowArtist" class="now-artist">Select a track</div>
-      <div id="nowSource" class="now-source">Source: —</div>
+      <div id="nowSource" class="now-source">playing from —</div>
       <div id="nowAlbum" class="now-album">Album: Unknown</div>
       <div id="lyricsBox" class="lyrics-box">Lyrics will appear here when available.</div>
     </div>
@@ -89,7 +91,7 @@
       </div>
       <div class="seek-row">
         <span id="currentTime">0:00</span>
-        <input id="seekBar" type="range" min="0" max="100" value="0" />
+        <input id="seekBar" type="range" min="0" max="0" value="0" step="0.1" />
         <span id="totalTime">0:00</span>
       </div>
       <div id="queueInfo" class="queue-info">Queue: 0 song(s)</div>
@@ -123,6 +125,39 @@
           <input id="newFolderName" class="search-input" placeholder="New folder name" />
           <button id="createFolderBtn" class="primary-btn">Create + add</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-backdrop" data-close="settings"></div>
+    <div class="modal-dialog">
+      <div class="modal-head"><h3>Player settings</h3><button id="closeSettingsModalBtn" class="close-btn">×</button></div>
+      <div class="modal-body">
+        <label class="checkbox-row"><input id="transitionEnabled" type="checkbox" /><span>Enable smooth transition</span></label>
+        <label>
+          <span>Transition duration (seconds)</span>
+          <input id="transitionSeconds" class="search-input" type="number" min="0" max="10" step="0.5" />
+        </label>
+        <div class="muted-label">Transition settings are available again here. They are saved locally in the browser.</div>
+        <div><button id="saveSettingsBtn" class="primary-btn">Save settings</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="metadataModal" class="modal hidden">
+    <div class="modal-backdrop" data-close="metadata"></div>
+    <div class="modal-dialog">
+      <div class="modal-head"><h3>Edit song metadata</h3><button id="closeMetadataModalBtn" class="close-btn">×</button></div>
+      <div class="modal-body">
+        <input id="metaTrackPath" type="hidden" />
+        <label><span>Title</span><input id="metaTitle" class="search-input" /></label>
+        <label><span>Artist names</span><input id="metaArtist" class="search-input" /></label>
+        <label><span>Album</span><input id="metaAlbum" class="search-input" /></label>
+        <label><span>Release year</span><input id="metaYear" class="search-input" /></label>
+        <label><span>Lyrics</span><textarea id="metaLyrics" class="search-input lyrics-editor"></textarea></label>
+        <label><span>Album art image URL (optional)</span><input id="metaArtUrl" class="search-input" placeholder="https://...jpg" /></label>
+        <div><button id="saveMetadataBtn" class="primary-btn">Save metadata</button></div>
       </div>
     </div>
   </div>

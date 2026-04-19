@@ -10,11 +10,12 @@ import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote
+from urllib.request import urlopen
 
 from mutagen import File as MutagenFile
-from mutagen.id3 import APIC, ID3, ID3NoHeaderError, USLT
+from mutagen.id3 import APIC, ID3, ID3NoHeaderError, USLT, TIT2, TALB, TPE1, TDRC
 
-APP_VERSION = os.getenv("APP_VERSION", "7.2.2")
+APP_VERSION = os.getenv("APP_VERSION", "7.2.3")
 APP_NAME = os.getenv("APP_NAME", "Music Player")
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/music-player/data")).resolve()
@@ -56,16 +57,30 @@ def stable_track_id(rel_path: str) -> str:
 
 
 def parse_filename(name: str) -> tuple[str, str, list[str]]:
-    base = normalize_spaces(re.sub(r"[_\.]+", " ", Path(name).stem))
-    parts = [normalize_spaces(p) for p in base.split(" - ") if normalize_spaces(p)]
+    stem = Path(name).stem
+    stem = normalize_spaces(stem.replace("，", ",").replace("–", "-").replace("—", "-"))
+    parts = [normalize_spaces(p) for p in stem.split(" - ") if normalize_spaces(p)]
     if len(parts) >= 3:
-        title = " - ".join(parts[:-2])
-        album = parts[-2]
-        artists = split_artists(parts[-1])
-        return title or base, album or "Unknown", artists
+        return parts[0], parts[-2] or "Unknown", split_artists(parts[-1])
     if len(parts) == 2:
         return parts[0], "Unknown", split_artists(parts[1])
-    return base, "Unknown", []
+    return stem, "Unknown", []
+
+
+def choose_title(file_title: str, tag_title: str, artists: list[str]) -> str:
+    file_title = normalize_spaces(file_title)
+    tag_title = normalize_spaces(tag_title)
+    if not tag_title:
+        return file_title
+    noisy_markers = ['|', 'official', 'audio', 'video', 'lyrics', 'lyrical', 't-series']
+    if any(marker in tag_title.lower() for marker in noisy_markers):
+        return file_title or tag_title
+    lowered = tag_title.lower()
+    if artists and any(a and a.lower() in lowered for a in artists):
+        return file_title or tag_title
+    if len(tag_title) > max(48, len(file_title) + 12):
+        return file_title or tag_title
+    return tag_title
 
 
 def read_playlists() -> dict[str, list[str]]:
@@ -151,17 +166,12 @@ def read_track_metadata(path: Path) -> dict:
                 tag_title = normalize_spaces(first(["TIT2", "title", "TITLE"]))
                 tag_album = normalize_spaces(first(["TALB", "album", "ALBUM"]))
                 tag_artist = normalize_spaces(first(["TPE1", "artist", "ARTIST"]))
-                if tag_artist:
-                    artists = split_artists(tag_artist) or artists
                 if tag_title:
-                    title = tag_title
-                    title_l = title.lower()
-                    file_title_l = file_title.lower()
-                    artist_words = [a.lower() for a in artists]
-                    if ('|' in title or 'official' in title_l or 'audio' in title_l or 'video' in title_l or any(a and a in title_l for a in artist_words)) and len(file_title) <= len(title):
-                        title = file_title
+                    title = choose_title(file_title, tag_title, artists or file_artists)
                 if tag_album:
                     album = tag_album
+                if tag_artist:
+                    artists = split_artists(tag_artist) or artists
     except Exception:
         pass
 
@@ -295,6 +305,34 @@ def move_tracks_to_folder(track_ids: list[str], folder_name: str) -> int:
         shutil.move(str(source), str(dest))
         moved += 1
     return moved
+
+
+def update_track_metadata(rel_path: str, title: str, artist: str, album: str, year: str, lyrics: str, album_art_url: str) -> None:
+    target = resolve_target(rel_path)
+    if target is None:
+        raise FileNotFoundError('track not found')
+    try:
+        tags = ID3(target)
+    except ID3NoHeaderError:
+        tags = ID3()
+    tags.delall('TIT2'); tags.delall('TPE1'); tags.delall('TALB'); tags.delall('TDRC'); tags.delall('USLT'); tags.delall('APIC')
+    if title.strip():
+        tags.add(TIT2(encoding=3, text=title.strip()))
+    if artist.strip():
+        tags.add(TPE1(encoding=3, text=artist.strip()))
+    if album.strip():
+        tags.add(TALB(encoding=3, text=album.strip()))
+    if year.strip():
+        tags.add(TDRC(encoding=3, text=year.strip()))
+    if lyrics.strip():
+        tags.add(USLT(encoding=3, lang='eng', desc='', text=lyrics.strip()))
+    if album_art_url.strip():
+        with urlopen(album_art_url.strip(), timeout=20) as resp:
+            data = resp.read()
+            ctype = resp.headers.get_content_type() or 'image/jpeg'
+        tags.add(APIC(encoding=3, mime=ctype, type=3, desc='Cover', data=data))
+    tags.save(target)
+
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -437,6 +475,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "invalid request"}, 400)
             moved = move_tracks_to_folder(ids, name)
             return self._json({"ok": True, "moved": moved})
+
+        if path == "/api/metadata/update":
+            rel_path = str(payload.get('path') or '')
+            if not rel_path:
+                return self._json({"error": "path required"}, 400)
+            try:
+                update_track_metadata(
+                    rel_path=rel_path,
+                    title=str(payload.get('title') or ''),
+                    artist=str(payload.get('artist') or ''),
+                    album=str(payload.get('album') or ''),
+                    year=str(payload.get('year') or ''),
+                    lyrics=str(payload.get('lyrics') or ''),
+                    album_art_url=str(payload.get('album_art_url') or ''),
+                )
+                return self._json({"ok": True})
+            except Exception as exc:
+                return self._json({"error": str(exc)}, 400)
 
         return self._json({"error": "not found"}, 404)
 

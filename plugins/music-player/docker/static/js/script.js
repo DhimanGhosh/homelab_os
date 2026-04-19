@@ -7,9 +7,10 @@ let PLAY_QUEUE = [];
 let PLAY_INDEX = -1;
 let SHUFFLE = false;
 let REPEAT = 'off';
-let PLAY_SOURCE = { type: 'all songs', name: 'All Songs' };
+let PLAY_SOURCE = { type: 'All Songs', name: 'All Songs' };
 let PAUSED_MANUALLY = false;
-let SEEKING = false;
+let IS_SEEKING = false;
+let SEEK_VALUE = 0;
 
 const el = (id) => document.getElementById(id);
 const audio = () => el('audioPlayer');
@@ -33,6 +34,8 @@ function currentTrack() { return trackMap().get(currentQueueTrackId()) || null; 
 function closeSidebar() { if (isMobile()) { el('sidebar').classList.remove('open'); el('mobileOverlay').classList.add('hidden'); } }
 function openSidebar() { if (isMobile()) { el('sidebar').classList.add('open'); el('mobileOverlay').classList.remove('hidden'); } }
 function hideTrackMenu() { el('trackMenu').classList.add('hidden'); el('trackMenu').innerHTML = ''; }
+function showModal(id) { el(id).classList.remove('hidden'); }
+function hideModal(id) { el(id).classList.add('hidden'); }
 
 function filterTracks(items) {
   const q = FILTER_VALUE.trim().toLowerCase();
@@ -65,6 +68,16 @@ function buildQueue(items, startTrackId = null, shuffle = false) {
   PLAY_INDEX = Math.max(0, queue.indexOf(startTrackId || queue[0]));
 }
 
+function sidebarContextText() {
+  if (VIEW === 'all') return 'Viewing: All Songs';
+  if (VIEW.startsWith('playlist:')) return `Viewing playlist: ${VIEW.slice(9)}`;
+  if (VIEW.startsWith('artist:')) return `Viewing artist: ${VIEW.slice(7)}`;
+  if (VIEW.startsWith('album:')) return `Viewing album: ${VIEW.slice(6)}`;
+  if (VIEW.startsWith('folder:')) return `Viewing folder: ${VIEW.slice(7)}`;
+  const topView = VIEW.split(':')[0];
+  return `Viewing: ${topView[0].toUpperCase()}${topView.slice(1)}`;
+}
+
 function syncSidebarHighlights() {
   document.querySelectorAll('.nav-btn').forEach((btn) => btn.classList.remove('active'));
   const topView = VIEW.split(':')[0];
@@ -76,8 +89,10 @@ function syncSidebarHighlights() {
     const btn = document.querySelector(`#savedPlaylists button[data-name="${CSS.escape(name)}"]`);
     if (btn) btn.classList.add('active');
   }
+  const box = el('currentContext');
+  box.textContent = sidebarContextText();
+  box.classList.remove('hidden');
 }
-
 
 function renderSidebarPlaylists() {
   const box = el('savedPlaylists');
@@ -92,16 +107,18 @@ function renderSidebarPlaylists() {
   syncSidebarHighlights();
 }
 
+function sourceTextFor(track) {
+  if (!track) return 'playing from —';
+  if (!PLAY_SOURCE || !PLAY_SOURCE.type) return 'playing from —';
+  if (PLAY_SOURCE.type === 'All Songs') return 'playing from All Songs';
+  return `playing from ${PLAY_SOURCE.type.toLowerCase()} ${PLAY_SOURCE.name}`;
+}
+
 function updateNowPlaying(track) {
   el('nowTitle').textContent = track ? track.title : 'Nothing playing';
   el('nowArtist').textContent = track ? (track.artist || 'Unknown Artist') : 'Select a track';
   el('nowAlbum').textContent = `Album: ${track ? (track.album || 'Unknown') : 'Unknown'}`;
-  let sourceText = 'Source: —';
-  if (track) {
-    if ((PLAY_SOURCE.type || '').toLowerCase() === 'all songs') sourceText = 'playing from All Songs';
-    else sourceText = `playing from ${PLAY_SOURCE.type} ${PLAY_SOURCE.name}`;
-  }
-  el('nowSource').textContent = sourceText;
+  el('nowSource').textContent = sourceTextFor(track);
   el('lyricsBox').textContent = track?.lyrics || 'Lyrics will appear here when available.';
   if (track?.album_art) {
     el('nowArt').src = track.album_art;
@@ -114,7 +131,6 @@ function updateNowPlaying(track) {
   el('queueInfo').textContent = `Queue: ${PLAY_QUEUE.length} song(s)`;
 }
 
-
 function updatePlayPauseButton() { el('playPauseBtn').textContent = audio().paused ? '▶' : '⏸'; }
 
 function playFromQueue(index, autoPlay = true) {
@@ -124,6 +140,7 @@ function playFromQueue(index, autoPlay = true) {
   if (!track) return;
   const player = audio();
   player.src = track.stream_url;
+  player.load();
   updateNowPlaying(track);
   renderCurrentView();
   if (autoPlay) player.play().catch(() => {});
@@ -152,18 +169,17 @@ function playNext(auto = false) {
   playFromQueue(nextIndex, true);
 }
 function playPrev() {
-  if (!PLAY_QUEUE.length) return;
   const player = audio();
-  if ((player.currentTime || 0) >= 5) {
+  if (player.currentTime >= 5) {
     player.currentTime = 0;
     return;
   }
+  if (!PLAY_QUEUE.length) return;
   let prevIndex = PLAY_INDEX - 1;
   if (prevIndex < 0) prevIndex = REPEAT === 'all' ? PLAY_QUEUE.length - 1 : 0;
   PAUSED_MANUALLY = false;
   playFromQueue(prevIndex, true);
 }
-
 
 function syncSelectionUI() {
   const count = SELECTED.size;
@@ -173,6 +189,37 @@ function syncSelectionUI() {
   ['addToPlaylistBtn','addToFolderBtn','clearSelectionBtn'].forEach((id) => { el(id).disabled = count === 0; });
 }
 
+function openMetadataModal(track) {
+  el('metaTrackPath').value = track.path || '';
+  el('metaTitle').value = track.title || '';
+  el('metaArtist').value = track.artist || '';
+  el('metaAlbum').value = track.album || '';
+  el('metaYear').value = track.year || '';
+  el('metaLyrics').value = track.lyrics || '';
+  el('metaArtUrl').value = '';
+  showModal('metadataModal');
+}
+
+async function saveMetadata() {
+  const payload = {
+    path: el('metaTrackPath').value,
+    title: el('metaTitle').value.trim(),
+    artist: el('metaArtist').value.trim(),
+    album: el('metaAlbum').value.trim(),
+    year: el('metaYear').value.trim(),
+    lyrics: el('metaLyrics').value.trim(),
+    album_art_url: el('metaArtUrl').value.trim(),
+  };
+  const res = await fetch('/api/metadata/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    alert(data.error || 'Failed to update metadata');
+    return;
+  }
+  hideModal('metadataModal');
+  await loadLibrary();
+}
+
 function renderTrackMenu(track, button, sourceTracks, source) {
   const menu = el('trackMenu');
   menu.innerHTML = `
@@ -180,6 +227,7 @@ function renderTrackMenu(track, button, sourceTracks, source) {
     <button data-action="next">Play next</button>
     <button data-action="playlist">Add to playlist</button>
     <button data-action="folder">Add to folder</button>
+    <button data-action="edit">Edit metadata</button>
     ${track.album ? '<button data-action="album">Go to album</button>' : ''}
   `;
   const rect = button.getBoundingClientRect();
@@ -200,6 +248,7 @@ function renderTrackMenu(track, button, sourceTracks, source) {
   };
   menu.querySelector('[data-action="playlist"]').onclick = () => { hideTrackMenu(); SELECTED = new Set([track.id]); syncSelectionUI(); openPlaylistModal(); };
   menu.querySelector('[data-action="folder"]').onclick = () => { hideTrackMenu(); SELECTED = new Set([track.id]); syncSelectionUI(); openFolderModal(); };
+  menu.querySelector('[data-action="edit"]').onclick = () => { hideTrackMenu(); openMetadataModal(track); };
   const albumBtn = menu.querySelector('[data-action="album"]');
   if (albumBtn) albumBtn.onclick = () => { hideTrackMenu(); VIEW = `album:${track.album}`; renderCurrentView(); };
 }
@@ -241,7 +290,7 @@ function renderTrackRows(items, title, meta, source) {
 
     const main = document.createElement('div');
     main.className = 'track-main';
-    main.innerHTML = `<div class="track-title">${escapeHtml(track.title)}</div><div class="track-sub">${escapeHtml(track.artist)}</div><div class="track-folder">${escapeHtml(track.album || 'Unknown')} ${track.duration ? ` · ${fmtTime(track.duration)}` : ''}</div>`;
+    main.innerHTML = `<div class="track-title">${escapeHtml(track.title)}</div><div class="track-sub">${escapeHtml(track.artist)}</div><div class="track-folder">${escapeHtml(track.album || 'Unknown')}${track.duration ? ` · ${fmtTime(track.duration)}` : ''}</div>`;
     main.onclick = () => playTrackById(track.id, items, source);
 
     const more = document.createElement('button');
@@ -264,7 +313,7 @@ function renderItemCards(title, meta, items, typeKey) {
   grid.className = 'item-grid';
   filterItems(items).forEach((item) => {
     const card = document.createElement('div');
-    card.className = 'item-card clickable-card';
+    card.className = 'item-card';
     card.innerHTML = `<div class="item-card-title">${escapeHtml(item.name)}</div><div class="item-card-meta">${item.count} song(s)</div>`;
     card.onclick = () => { VIEW = `${typeKey.slice(0,-1)}:${item.name}`; renderCurrentView(); };
     grid.appendChild(card);
@@ -272,10 +321,9 @@ function renderItemCards(title, meta, items, typeKey) {
   box.appendChild(grid);
 }
 
-
 function renderCurrentView() {
   syncSidebarHighlights();
-  if (VIEW === 'all') return renderTrackRows(filterTracks(allTracks()), 'All Songs', `${filterTracks(allTracks()).length} track(s)`, { type: 'all songs', name: 'All Songs' });
+  if (VIEW === 'all') return renderTrackRows(filterTracks(allTracks()), 'All Songs', `${filterTracks(allTracks()).length} track(s)`, { type: 'All Songs', name: 'All Songs' });
   if (VIEW === 'playlists') return renderItemCards('Playlists', `${(LIBRARY?.playlists || []).length} shown`, LIBRARY?.playlists || [], 'playlists');
   if (VIEW === 'artists') return renderItemCards('Artists', `${filterItems(LIBRARY?.artists || []).length} shown`, LIBRARY?.artists || [], 'artists');
   if (VIEW === 'albums') return renderItemCards('Albums', `${filterItems(LIBRARY?.albums || []).length} shown`, LIBRARY?.albums || [], 'albums');
@@ -299,7 +347,7 @@ async function addToPlaylist(name) {
   const ids = Array.from(SELECTED);
   if (!name || !ids.length) return;
   await fetch('/api/playlists', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, track_ids: ids }) });
-  el('playlistModal').classList.add('hidden');
+  hideModal('playlistModal');
   SELECTED.clear();
   syncSelectionUI();
   await loadLibrary();
@@ -308,7 +356,7 @@ async function addToFolder(name) {
   const ids = Array.from(SELECTED);
   if (!name || !ids.length) return;
   await fetch('/api/folders/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, track_ids: ids }) });
-  el('folderModal').classList.add('hidden');
+  hideModal('folderModal');
   SELECTED.clear();
   syncSelectionUI();
   await loadLibrary();
@@ -319,17 +367,29 @@ function openPlaylistModal() {
   (LIBRARY?.playlists || []).forEach((playlist) => {
     const btn = document.createElement('button'); btn.className = 'playlist-chip'; btn.textContent = `${playlist.name} (${playlist.count})`; btn.onclick = () => addToPlaylist(playlist.name); list.appendChild(btn);
   });
-  el('playlistModal').classList.remove('hidden');
+  showModal('playlistModal');
 }
 function openFolderModal() {
   const list = el('folderList'); list.innerHTML = '';
   (LIBRARY?.folders || []).forEach((folder) => { const btn = document.createElement('button'); btn.className = 'playlist-chip'; btn.textContent = `${folder.name} (${folder.count})`; btn.onclick = () => addToFolder(folder.name); list.appendChild(btn); });
-  el('folderModal').classList.remove('hidden');
+  showModal('folderModal');
+}
+
+function saveSettings() {
+  localStorage.setItem('music_transition_enabled', el('transitionEnabled').checked ? '1' : '0');
+  localStorage.setItem('music_transition_seconds', el('transitionSeconds').value || '0');
+  hideModal('settingsModal');
+}
+function loadSettings() {
+  el('transitionEnabled').checked = localStorage.getItem('music_transition_enabled') === '1';
+  el('transitionSeconds').value = localStorage.getItem('music_transition_seconds') || '0';
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  loadLibrary();
   document.addEventListener('contextmenu', (e) => e.preventDefault());
+  loadSettings();
+  loadLibrary();
+  el('menuToggle').onclick = openSidebar;
   el('closeSidebarBtn').onclick = closeSidebar;
   el('mobileOverlay').onclick = closeSidebar;
   document.addEventListener('click', (e) => { if (!e.target.closest('#trackMenu') && !e.target.closest('.track-mini-btn')) hideTrackMenu(); });
@@ -344,12 +404,16 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   el('clearSearchBtn').onclick = () => { el('searchInput').value = ''; FILTER_VALUE = ''; el('clearSearchBtn').classList.add('hidden'); renderCurrentView(); };
   el('refreshBtn').onclick = loadLibrary;
+  el('settingsBtn').onclick = () => showModal('settingsModal');
+  el('closeSettingsModalBtn').onclick = () => hideModal('settingsModal');
+  el('saveSettingsBtn').onclick = saveSettings;
+  document.querySelector('[data-close="settings"]').onclick = () => hideModal('settingsModal');
 
   el('shuffleAllBtn').onclick = () => {
     SHUFFLE = true;
     el('shuffleToggleBtn').classList.add('active-toggle');
     if (!CURRENT_VIEW_TRACKS.length) return;
-    PLAY_SOURCE = { type: VIEW.split(':')[0], name: el('contentTitle').textContent };
+    PLAY_SOURCE = { type: el('contentTitle').textContent === 'All Songs' ? 'All Songs' : VIEW.split(':')[0], name: el('contentTitle').textContent };
     buildQueue(CURRENT_VIEW_TRACKS, CURRENT_VIEW_TRACKS[0].id, true);
     playFromQueue(0, true);
   };
@@ -370,11 +434,15 @@ window.addEventListener('DOMContentLoaded', () => {
   el('addToPlaylistBtn').onclick = openPlaylistModal;
   el('addToFolderBtn').onclick = openFolderModal;
   el('clearSelectionBtn').onclick = () => { SELECTED.clear(); syncSelectionUI(); renderCurrentView(); };
-  el('closePlaylistModalBtn').onclick = () => el('playlistModal').classList.add('hidden');
-  el('closeFolderModalBtn').onclick = () => el('folderModal').classList.add('hidden');
-  document.querySelectorAll('[data-close]').forEach((node) => node.onclick = () => el(node.dataset.close === 'playlist' ? 'playlistModal' : 'folderModal').classList.add('hidden'));
+  el('closePlaylistModalBtn').onclick = () => hideModal('playlistModal');
+  el('closeFolderModalBtn').onclick = () => hideModal('folderModal');
+  el('closeMetadataModalBtn').onclick = () => hideModal('metadataModal');
+  document.querySelectorAll('[data-close="playlist"]').forEach((node) => node.onclick = () => hideModal('playlistModal'));
+  document.querySelectorAll('[data-close="folder"]').forEach((node) => node.onclick = () => hideModal('folderModal'));
+  document.querySelectorAll('[data-close="metadata"]').forEach((node) => node.onclick = () => hideModal('metadataModal'));
   el('createPlaylistBtn').onclick = () => { const name = el('newPlaylistName').value.trim(); if (name) addToPlaylist(name); };
-  el('createFolderBtn').onclick = async () => { const name = el('newFolderName').value.trim(); if (!name) return; await fetch('/api/folders/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }); if (SELECTED.size) addToFolder(name); else { el('folderModal').classList.add('hidden'); await loadLibrary(); } };
+  el('createFolderBtn').onclick = async () => { const name = el('newFolderName').value.trim(); if (!name) return; await fetch('/api/folders/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }); if (SELECTED.size) addToFolder(name); else { hideModal('folderModal'); await loadLibrary(); } };
+  el('saveMetadataBtn').onclick = saveMetadata;
 
   el('playPauseBtn').onclick = () => {
     const player = audio();
@@ -390,23 +458,30 @@ window.addEventListener('DOMContentLoaded', () => {
   player.addEventListener('pause', updatePlayPauseButton);
   player.addEventListener('play', updatePlayPauseButton);
   player.addEventListener('ended', () => playNext(true));
+  player.addEventListener('loadedmetadata', () => {
+    el('totalTime').textContent = fmtTime(player.duration || 0);
+    el('seekBar').max = String(player.duration || 0);
+  });
   player.addEventListener('timeupdate', () => {
+    if (IS_SEEKING) return;
     el('currentTime').textContent = fmtTime(player.currentTime || 0);
     el('totalTime').textContent = fmtTime(player.duration || 0);
-    if (!SEEKING) el('seekBar').value = player.duration ? String((player.currentTime / player.duration) * 100) : '0';
+    el('seekBar').max = String(player.duration || 0);
+    el('seekBar').value = String(player.currentTime || 0);
   });
-  const applySeek = () => {
-    if (player.duration) player.currentTime = (Number(el('seekBar').value) / 100) * player.duration;
+
+  const seek = el('seekBar');
+  const commitSeek = () => {
+    const duration = Number(player.duration || 0);
+    if (duration <= 0) return;
+    const nextTime = Math.max(0, Math.min(duration, Number(SEEK_VALUE || seek.value || 0)));
+    player.currentTime = nextTime;
+    el('currentTime').textContent = fmtTime(nextTime);
   };
-  el('seekBar').addEventListener('pointerdown', () => { SEEKING = true; });
-  el('seekBar').addEventListener('input', () => {
-    if (player.duration) {
-      const previewTime = (Number(el('seekBar').value) / 100) * player.duration;
-      el('currentTime').textContent = fmtTime(previewTime);
-    }
-  });
-  el('seekBar').addEventListener('change', () => { applySeek(); SEEKING = false; });
-  el('seekBar').addEventListener('pointerup', () => { applySeek(); SEEKING = false; });
-  el('seekBar').addEventListener('touchend', () => { applySeek(); SEEKING = false; });
+  ['pointerdown', 'touchstart', 'mousedown'].forEach((evt) => seek.addEventListener(evt, (e) => { IS_SEEKING = true; e.stopPropagation(); }));
+  seek.addEventListener('input', (e) => { SEEK_VALUE = Number(e.target.value || 0); el('currentTime').textContent = fmtTime(SEEK_VALUE); });
+  seek.addEventListener('change', (e) => { SEEK_VALUE = Number(e.target.value || 0); commitSeek(); IS_SEEKING = false; });
+  ['pointerup', 'touchend', 'mouseup', 'keyup'].forEach((evt) => seek.addEventListener(evt, () => { if (IS_SEEKING) { commitSeek(); IS_SEEKING = false; } }));
+
   syncSelectionUI();
 });
