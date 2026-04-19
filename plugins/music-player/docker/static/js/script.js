@@ -9,6 +9,7 @@ let SHUFFLE = false;
 let REPEAT = 'off';
 let PLAY_SOURCE = { type: 'all songs', name: 'All Songs' };
 let PAUSED_MANUALLY = false;
+let SEEKING = false;
 
 const el = (id) => document.getElementById(id);
 const audio = () => el('audioPlayer');
@@ -75,11 +76,8 @@ function syncSidebarHighlights() {
     const btn = document.querySelector(`#savedPlaylists button[data-name="${CSS.escape(name)}"]`);
     if (btn) btn.classList.add('active');
   }
-  const box = el('currentContext');
-  const selectedLabel = VIEW.includes(':') ? VIEW.split(':')[1] : topView;
-  box.textContent = `Selected: ${selectedLabel}`;
-  box.classList.remove('hidden');
 }
+
 
 function renderSidebarPlaylists() {
   const box = el('savedPlaylists');
@@ -98,7 +96,11 @@ function updateNowPlaying(track) {
   el('nowTitle').textContent = track ? track.title : 'Nothing playing';
   el('nowArtist').textContent = track ? (track.artist || 'Unknown Artist') : 'Select a track';
   el('nowAlbum').textContent = `Album: ${track ? (track.album || 'Unknown') : 'Unknown'}`;
-  const sourceText = track ? `${track.title} playing from ${PLAY_SOURCE.type} ${PLAY_SOURCE.name}` : 'Source: —';
+  let sourceText = 'Source: —';
+  if (track) {
+    if ((PLAY_SOURCE.type || '').toLowerCase() === 'all songs') sourceText = 'playing from All Songs';
+    else sourceText = `playing from ${PLAY_SOURCE.type} ${PLAY_SOURCE.name}`;
+  }
   el('nowSource').textContent = sourceText;
   el('lyricsBox').textContent = track?.lyrics || 'Lyrics will appear here when available.';
   if (track?.album_art) {
@@ -111,6 +113,7 @@ function updateNowPlaying(track) {
   }
   el('queueInfo').textContent = `Queue: ${PLAY_QUEUE.length} song(s)`;
 }
+
 
 function updatePlayPauseButton() { el('playPauseBtn').textContent = audio().paused ? '▶' : '⏸'; }
 
@@ -150,11 +153,17 @@ function playNext(auto = false) {
 }
 function playPrev() {
   if (!PLAY_QUEUE.length) return;
+  const player = audio();
+  if ((player.currentTime || 0) >= 5) {
+    player.currentTime = 0;
+    return;
+  }
   let prevIndex = PLAY_INDEX - 1;
   if (prevIndex < 0) prevIndex = REPEAT === 'all' ? PLAY_QUEUE.length - 1 : 0;
   PAUSED_MANUALLY = false;
   playFromQueue(prevIndex, true);
 }
+
 
 function syncSelectionUI() {
   const count = SELECTED.size;
@@ -255,25 +264,14 @@ function renderItemCards(title, meta, items, typeKey) {
   grid.className = 'item-grid';
   filterItems(items).forEach((item) => {
     const card = document.createElement('div');
-    card.className = 'item-card';
-    card.innerHTML = `<div class="item-card-title">${escapeHtml(item.name)}</div><div class="item-card-meta">${item.count} song(s)</div><div class="item-card-actions"><button class="playlist-chip open-btn">Open</button><button class="playlist-chip next-btn">Play next</button></div>`;
-    card.querySelector('.open-btn').onclick = (e) => { e.stopPropagation(); VIEW = `${typeKey.slice(0,-1)}:${item.name}`; renderCurrentView(); };
-    card.querySelector('.next-btn').onclick = (e) => {
-      e.stopPropagation();
-      const tracks = tracksByIds(item.tracks || []);
-      if (!tracks.length) return;
-      if (!PLAY_QUEUE.length) {
-        PLAY_SOURCE = { type: typeKey.slice(0, -1), name: item.name };
-        buildQueue(tracks, tracks[0].id, false); playFromQueue(0, true); return;
-      }
-      const idsToInsert = tracks.map((t) => t.id);
-      PLAY_QUEUE = [...PLAY_QUEUE.slice(0, PLAY_INDEX + 1), ...idsToInsert, ...PLAY_QUEUE.slice(PLAY_INDEX + 1).filter((id) => !idsToInsert.includes(id))];
-      updateNowPlaying(currentTrack());
-    };
+    card.className = 'item-card clickable-card';
+    card.innerHTML = `<div class="item-card-title">${escapeHtml(item.name)}</div><div class="item-card-meta">${item.count} song(s)</div>`;
+    card.onclick = () => { VIEW = `${typeKey.slice(0,-1)}:${item.name}`; renderCurrentView(); };
     grid.appendChild(card);
   });
   box.appendChild(grid);
 }
+
 
 function renderCurrentView() {
   syncSidebarHighlights();
@@ -331,7 +329,7 @@ function openFolderModal() {
 
 window.addEventListener('DOMContentLoaded', () => {
   loadLibrary();
-  el('menuToggle').onclick = openSidebar;
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
   el('closeSidebarBtn').onclick = closeSidebar;
   el('mobileOverlay').onclick = closeSidebar;
   document.addEventListener('click', (e) => { if (!e.target.closest('#trackMenu') && !e.target.closest('.track-mini-btn')) hideTrackMenu(); });
@@ -395,8 +393,20 @@ window.addEventListener('DOMContentLoaded', () => {
   player.addEventListener('timeupdate', () => {
     el('currentTime').textContent = fmtTime(player.currentTime || 0);
     el('totalTime').textContent = fmtTime(player.duration || 0);
-    el('seekBar').value = player.duration ? String((player.currentTime / player.duration) * 100) : '0';
+    if (!SEEKING) el('seekBar').value = player.duration ? String((player.currentTime / player.duration) * 100) : '0';
   });
-  el('seekBar').addEventListener('input', (e) => { if (player.duration) player.currentTime = (Number(e.target.value) / 100) * player.duration; });
+  const applySeek = () => {
+    if (player.duration) player.currentTime = (Number(el('seekBar').value) / 100) * player.duration;
+  };
+  el('seekBar').addEventListener('pointerdown', () => { SEEKING = true; });
+  el('seekBar').addEventListener('input', () => {
+    if (player.duration) {
+      const previewTime = (Number(el('seekBar').value) / 100) * player.duration;
+      el('currentTime').textContent = fmtTime(previewTime);
+    }
+  });
+  el('seekBar').addEventListener('change', () => { applySeek(); SEEKING = false; });
+  el('seekBar').addEventListener('pointerup', () => { applySeek(); SEEKING = false; });
+  el('seekBar').addEventListener('touchend', () => { applySeek(); SEEKING = false; });
   syncSelectionUI();
 });

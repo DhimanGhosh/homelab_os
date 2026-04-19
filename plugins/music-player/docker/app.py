@@ -14,7 +14,7 @@ from urllib.parse import urlparse, unquote
 from mutagen import File as MutagenFile
 from mutagen.id3 import APIC, ID3, ID3NoHeaderError, USLT
 
-APP_VERSION = os.getenv("APP_VERSION", "7.2.1")
+APP_VERSION = os.getenv("APP_VERSION", "7.2.2")
 APP_NAME = os.getenv("APP_NAME", "Music Player")
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/music-player/data")).resolve()
@@ -151,12 +151,17 @@ def read_track_metadata(path: Path) -> dict:
                 tag_title = normalize_spaces(first(["TIT2", "title", "TITLE"]))
                 tag_album = normalize_spaces(first(["TALB", "album", "ALBUM"]))
                 tag_artist = normalize_spaces(first(["TPE1", "artist", "ARTIST"]))
-                if tag_title:
-                    title = tag_title
-                if tag_album:
-                    album = tag_album
                 if tag_artist:
                     artists = split_artists(tag_artist) or artists
+                if tag_title:
+                    title = tag_title
+                    title_l = title.lower()
+                    file_title_l = file_title.lower()
+                    artist_words = [a.lower() for a in artists]
+                    if ('|' in title or 'official' in title_l or 'audio' in title_l or 'video' in title_l or any(a and a in title_l for a in artist_words)) and len(file_title) <= len(title):
+                        title = file_title
+                if tag_album:
+                    album = tag_album
     except Exception:
         pass
 

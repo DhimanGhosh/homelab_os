@@ -5,15 +5,18 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
+import requests
 from flask import Flask, jsonify, request, send_from_directory
 
 APP_NAME = os.getenv("APP_NAME", "Song Downloader")
-APP_VERSION = os.getenv("APP_VERSION", "1.0.4")
+APP_VERSION = os.getenv("APP_VERSION", "1.0.8")
 PORT = int(os.getenv("PORT", "8145"))
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/song-downloader/data")).resolve()
@@ -28,6 +31,9 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 JOBS_LOCK = threading.Lock()
 
 
+# -------------------------------
+# Jobs helpers
+# -------------------------------
 def load_jobs() -> list[dict]:
     if JOBS_FILE.exists():
         try:
@@ -84,6 +90,9 @@ def append_log(job_id: str, line: str) -> None:
                 return
 
 
+# -------------------------------
+# Naming helpers
+# -------------------------------
 def slugify_filename(text: str) -> str:
     text = re.sub(r'[\\/:*?"<>|]+', "", text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -111,6 +120,9 @@ def safe_destination(path: Path) -> Path:
         idx += 1
 
 
+# -------------------------------
+# Source helpers
+# -------------------------------
 def yt_search_query(song_name: str, artist_names: str, album_name: str) -> str:
     query = " ".join(x for x in [song_name, artist_names, album_name, "official audio"] if x)
     return f"ytsearch1:{query.strip()}"
@@ -133,8 +145,6 @@ def find_downloaded_file(download_dir: Path, marker: str) -> Path | None:
         if match.is_file() and match.suffix.lower() == ".mp3":
             return match
     return None
-
-
 
 
 def set_progress(job_id: str, value: int) -> None:
@@ -162,6 +172,183 @@ def _extract_progress_percent(line: str) -> int | None:
     return int(float(match.group(1)))
 
 
+def parse_name_components(name: str) -> tuple[str, str, str]:
+    base = Path(name or '').name
+    if base.lower().endswith('.mp3'):
+        base = base[:-4]
+    normalized = re.sub(r'\s+', ' ', str(base).replace('，', ',').replace('–', '-').replace('—', '-')).strip()
+    parts = [part.strip() for part in normalized.split(' - ') if part.strip()]
+    if len(parts) >= 3:
+        return parts[0], ' - '.join(parts[1:-1]), parts[-1]
+    if len(parts) == 2:
+        return parts[0], '', parts[1]
+    return normalized, '', ''
+
+
+# -------------------------------
+# Metadata enrichment
+# -------------------------------
+def safe_music_relative(path: Path) -> str:
+    path = path.resolve()
+    try:
+        return str(path.relative_to(MUSIC_ROOT))
+    except ValueError:
+        raise ValueError("Selected file must be inside /mnt/nas/media/music")
+
+
+def parse_existing_lyrics(vtt_path: Path) -> str:
+    try:
+        text = vtt_path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+    lines: list[str] = []
+    seen: set[str] = set()
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line == "WEBVTT":
+            continue
+        if re.match(r"^\d{2}:\d{2}:\d{2}\.\d+\s+-->\s+\d{2}:\d{2}:\d{2}\.\d+", line):
+            continue
+        line = re.sub(r"<[^>]+>", "", line).strip()
+        if not line:
+            continue
+        if line in seen:
+            continue
+        seen.add(line)
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def fetch_source_info(source: str, temp_dir: Path, logger) -> dict:
+    info_cmd = ["yt-dlp", "--no-playlist", "-J", source]
+    result = subprocess.run(info_cmd, capture_output=True, text=True, check=True)
+    info = json.loads(result.stdout or "{}")
+
+    thumbnail_file = None
+    thumbnail_url = info.get("thumbnail")
+    if thumbnail_url:
+        try:
+            suffix = Path(urlparse(thumbnail_url).path).suffix or ".jpg"
+            thumbnail_file = temp_dir / f"cover{suffix}"
+            response = requests.get(thumbnail_url, timeout=30)
+            response.raise_for_status()
+            thumbnail_file.write_bytes(response.content)
+            logger(f"Fetched album art from source metadata")
+        except Exception as exc:
+            logger(f"Album art fetch skipped: {exc}")
+            thumbnail_file = None
+
+    lyrics_text = ""
+    subs_base = temp_dir / "subs"
+    subs_cmd = [
+        "yt-dlp",
+        "--no-playlist",
+        "--skip-download",
+        "--write-auto-sub",
+        "--write-sub",
+        "--sub-langs",
+        "en.*,en",
+        "--sub-format",
+        "vtt/best",
+        "-o",
+        str(subs_base),
+        source,
+    ]
+    subs_proc = subprocess.run(subs_cmd, capture_output=True, text=True)
+    if subs_proc.returncode == 0:
+        for candidate in sorted(temp_dir.glob("subs*.vtt")):
+            lyrics_text = parse_existing_lyrics(candidate)
+            if lyrics_text:
+                logger("Fetched lyrics from subtitles/auto-captions")
+                break
+    else:
+        logger("Lyrics fetch skipped: subtitles not available")
+
+    return {
+        "title": (info.get("track") or info.get("title") or "").strip(),
+        "artist": (info.get("artist") or info.get("uploader") or "").strip(),
+        "album": (info.get("album") or "").strip(),
+        "thumbnail_file": str(thumbnail_file) if thumbnail_file and thumbnail_file.exists() else "",
+        "lyrics": lyrics_text,
+    }
+
+
+def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) -> None:
+    requested_title = (payload.get("song_name") or "").strip()
+    requested_artist = (payload.get("artist_names") or "").strip()
+    requested_album = (payload.get("album_name") or "").strip()
+
+    with tempfile.TemporaryDirectory(prefix="songdown_meta_") as temp_dir_str:
+        temp_dir = Path(temp_dir_str)
+        metadata = {
+            "title": requested_title,
+            "artist": requested_artist,
+            "album": requested_album if requested_album and requested_album.lower() != "unknown" else "",
+            "lyrics": "",
+            "thumbnail_file": "",
+        }
+
+        try:
+            source_info = fetch_source_info(source, temp_dir, logger)
+        except Exception as exc:
+            logger(f"Metadata lookup skipped: {exc}")
+            source_info = {}
+
+        if not metadata["title"]:
+            metadata["title"] = (source_info.get("title") or "").strip()
+        if not metadata["artist"]:
+            metadata["artist"] = (source_info.get("artist") or "").strip()
+        if not metadata["album"]:
+            metadata["album"] = (source_info.get("album") or "").strip()
+        metadata["lyrics"] = (source_info.get("lyrics") or "").strip()
+        metadata["thumbnail_file"] = (source_info.get("thumbnail_file") or "").strip()
+
+        output_file = file_path.with_name(f"{file_path.stem}.retag{file_path.suffix}")
+        ffmpeg_cmd = ["ffmpeg", "-y", "-i", str(file_path)]
+        if metadata["thumbnail_file"]:
+            ffmpeg_cmd.extend(["-i", metadata["thumbnail_file"]])
+
+        ffmpeg_cmd.extend(["-map_metadata", "-1", "-map", "0:a"])
+        if metadata["thumbnail_file"]:
+            ffmpeg_cmd.extend(["-map", "1", "-c:v", "mjpeg"])
+
+        ffmpeg_cmd.extend([
+            "-c:a", "copy",
+            "-id3v2_version", "3",
+            "-metadata", f"title={metadata['title']}",
+            "-metadata", f"artist={metadata['artist']}",
+            "-metadata", f"album={metadata['album']}",
+        ])
+        if metadata["lyrics"]:
+            ffmpeg_cmd.extend(["-metadata", f"lyrics={metadata['lyrics']}"])
+        if metadata["thumbnail_file"]:
+            ffmpeg_cmd.extend([
+                "-metadata:s:v", "title=Album cover",
+                "-metadata:s:v", "comment=Cover (front)",
+            ])
+        ffmpeg_cmd.append(str(output_file))
+
+        proc = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or "ffmpeg metadata update failed")
+
+        output_file.replace(file_path)
+        logger(
+            "Metadata applied: "
+            f"title={metadata['title'] or '—'}, "
+            f"artist={metadata['artist'] or '—'}, "
+            f"album={metadata['album'] or '—'}, "
+            f"lyrics={'yes' if metadata['lyrics'] else 'no'}, "
+            f"album_art={'yes' if metadata['thumbnail_file'] else 'no'}"
+        )
+
+
+# -------------------------------
+# Download / retag workers
+# -------------------------------
 def run_download_job(job_id: str) -> None:
     job = update_job(job_id, status="running", progress=1)
     if not job:
@@ -171,11 +358,17 @@ def run_download_job(job_id: str) -> None:
     song_name = payload.get("song_name", "").strip()
     artist_names = payload.get("artist_names", "").strip()
     rename_to = payload.get("rename_to", "").strip()
+    parsed_title, parsed_album, parsed_artists = parse_name_components(rename_to) if rename_to else ('', '', '')
+    if not song_name and parsed_title:
+        song_name = parsed_title
+    if not artist_names and parsed_artists:
+        artist_names = parsed_artists
+    payload_album = payload.get("album_name", "").strip() or parsed_album or "Unknown"
     album_name = infer_album_from_rename(
         rename_to=rename_to,
         song_name=song_name,
         artist_names=artist_names,
-        album_name=payload.get("album_name", "").strip() or "Unknown",
+        album_name=payload_album,
     )
     auto_move = bool(payload.get("auto_move", True))
 
@@ -224,6 +417,20 @@ def run_download_job(job_id: str) -> None:
         final_path = safe_destination((MUSIC_ROOT if auto_move else DOWNLOADS_DIR) / target_name)
 
         shutil.move(str(downloaded), str(final_path))
+        append_log(job_id, f"Saved file: {final_path}")
+        append_log(job_id, "Applying metadata enrichment")
+        enrich_file_metadata(
+            final_path,
+            payload={
+                **payload,
+                "song_name": song_name,
+                "artist_names": artist_names,
+                "album_name": album_name,
+            },
+            source=source,
+            logger=lambda line: append_log(job_id, line),
+        )
+
         update_job(
             job_id,
             status="completed",
@@ -237,13 +444,39 @@ def run_download_job(job_id: str) -> None:
                 "album_name": album_name,
             },
         )
-        append_log(job_id, f"Saved file: {final_path}")
 
     except Exception as exc:
         update_job(job_id, status="failed", error=str(exc), progress=100)
         append_log(job_id, f"ERROR: {exc}")
 
 
+def run_retag_job(job_id: str) -> None:
+    job = update_job(job_id, status="running", progress=5)
+    if not job:
+        return
+
+    payload = job["payload"]
+    try:
+        relative_path = payload.get("selected_file", "")
+        if not relative_path:
+            raise ValueError("No song selected for retagging")
+        target = (MUSIC_ROOT / relative_path).resolve()
+        safe_music_relative(target)
+        if not target.exists() or not target.is_file():
+            raise FileNotFoundError("Selected song file was not found")
+
+        append_log(job_id, f"Retagging file: {target}")
+        source = resolve_source(payload)
+        enrich_file_metadata(target, payload, source, lambda line: append_log(job_id, line))
+        update_job(job_id, status="completed", final_file=str(target), progress=100)
+    except Exception as exc:
+        update_job(job_id, status="failed", error=str(exc), progress=100)
+        append_log(job_id, f"ERROR: {exc}")
+
+
+# -------------------------------
+# Routes
+# -------------------------------
 @app.route("/")
 def index():
     return send_from_directory(app.template_folder, "index.html")
@@ -275,8 +508,23 @@ def get_jobs():
 @app.route("/api/jobs/clear", methods=["POST"])
 def clear_jobs():
     with JOBS_LOCK:
-        save_jobs([])
+        jobs = load_jobs()
+        remaining = [job for job in jobs if job.get("status") not in {"completed", "failed"}]
+        save_jobs(remaining)
     return jsonify({"ok": True})
+
+
+@app.route("/api/library-songs", methods=["GET"])
+def library_songs():
+    songs = []
+    for path in sorted(MUSIC_ROOT.rglob("*")):
+        if path.is_file() and path.suffix.lower() in {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".aac"}:
+            try:
+                rel = safe_music_relative(path)
+                songs.append({"path": rel, "name": path.name, "display": path.name})
+            except Exception:
+                continue
+    return jsonify({"songs": songs})
 
 
 @app.route("/api/download", methods=["POST"])
@@ -284,6 +532,14 @@ def download():
     payload = request.get_json(force=True)
     job = create_job(payload)
     threading.Thread(target=run_download_job, args=(job["id"],), daemon=True).start()
+    return jsonify({"ok": True, "job_id": job["id"]})
+
+
+@app.route("/api/retag", methods=["POST"])
+def retag():
+    payload = request.get_json(force=True)
+    job = create_job({**payload, "job_type": "retag"})
+    threading.Thread(target=run_retag_job, args=(job["id"],), daemon=True).start()
     return jsonify({"ok": True, "job_id": job["id"]})
 
 

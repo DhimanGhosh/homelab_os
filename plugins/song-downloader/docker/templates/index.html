@@ -24,7 +24,10 @@
         </div>
       </div>
 
-      <form id="downloadForm" class="download-form">
+      <form id="downloadForm" class="download-form section-spacer">
+        <div class="section-title-row">
+          <h2>Download new song</h2>
+        </div>
         <div class="field-grid">
           <label>
             <span>Song name</span>
@@ -75,6 +78,68 @@
         <div class="form-actions">
           <button type="submit" class="primary-btn">Start download</button>
           <button type="button" id="clearJobsBtn" class="ghost-btn danger">Clear jobs</button>
+        </div>
+      </form>
+
+      <form id="retagForm" class="download-form retag-card">
+        <div class="section-title-row">
+          <h2>Retag already downloaded songs</h2>
+          <button type="button" id="refreshLibraryBtn" class="ghost-btn small-btn">Refresh song list</button>
+        </div>
+        <p class="helper-text">
+          Choose a song already present inside <code>/mnt/nas/media/music</code> and apply title / artist / album / lyrics / album-art metadata again without re-downloading.
+        </p>
+        <div class="field-grid">
+          <label>
+            <span>Search song</span>
+            <div class="input-wrap">
+              <input type="text" id="library_song_search" placeholder="Search inside /mnt/nas/media/music" />
+              <button type="button" class="clear-btn" data-target="library_song_search">×</button>
+            </div>
+          </label>
+
+          <label>
+            <span>Existing song</span>
+            <div class="input-wrap no-clear">
+              <select id="selected_file"></select>
+            </div>
+          </label>
+
+          <label>
+            <span>Song name</span>
+            <div class="input-wrap">
+              <input type="text" id="retag_song_name" placeholder="Tum Hi Ho" />
+              <button type="button" class="clear-btn" data-target="retag_song_name">×</button>
+            </div>
+          </label>
+
+          <label>
+            <span>Artist names</span>
+            <div class="input-wrap">
+              <input type="text" id="retag_artist_names" placeholder="Arijit Singh" />
+              <button type="button" class="clear-btn" data-target="retag_artist_names">×</button>
+            </div>
+          </label>
+
+          <label>
+            <span>Album / movie (optional)</span>
+            <div class="input-wrap">
+              <input type="text" id="retag_album_name" placeholder="Aashiqui 2 / Fighter" />
+              <button type="button" class="clear-btn" data-target="retag_album_name">×</button>
+            </div>
+          </label>
+
+          <label>
+            <span>YouTube link (optional)</span>
+            <div class="input-wrap">
+              <input type="url" id="retag_youtube_url" placeholder="https://www.youtube.com/watch?v=..." />
+              <button type="button" class="clear-btn" data-target="retag_youtube_url">×</button>
+            </div>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-btn">Apply metadata to selected song</button>
         </div>
       </form>
     </section>
