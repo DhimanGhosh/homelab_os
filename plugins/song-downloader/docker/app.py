@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from html import unescape
 import os
 import re
 import shutil
@@ -8,15 +9,16 @@ import subprocess
 import tempfile
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 
 APP_NAME = os.getenv("APP_NAME", "Song Downloader")
-APP_VERSION = os.getenv("APP_VERSION", "1.0.9")
+APP_VERSION = "1.0.11"
 PORT = int(os.getenv("PORT", "8145"))
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/song-downloader/data")).resolve()
@@ -29,6 +31,29 @@ MUSIC_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 JOBS_LOCK = threading.Lock()
+JOB_CANCEL_EVENTS: dict[str, threading.Event] = {}
+RUNNING_PROCS: dict[str, set[subprocess.Popen]] = {}
+RUNNING_PROCS_LOCK = threading.Lock()
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def recover_stale_jobs() -> None:
+    with JOBS_LOCK:
+        jobs = load_jobs()
+        changed = False
+        for job in jobs:
+            if job.get("status") in {"running", "queued"}:
+                job["status"] = "aborted"
+                job["error"] = "Recovered after app restart"
+                job.setdefault("logs", []).append("Recovered after app restart; stale running job marked aborted")
+                job["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                changed = True
+        if changed:
+            save_jobs(jobs)
 
 
 # -------------------------------
@@ -88,6 +113,61 @@ def append_log(job_id: str, line: str) -> None:
                 job["updated_at"] = datetime.now().isoformat(timespec="seconds")
                 save_jobs(jobs)
                 return
+
+
+def get_cancel_event(job_id: str) -> threading.Event:
+    with JOBS_LOCK:
+        event = JOB_CANCEL_EVENTS.get(job_id)
+        if event is None:
+            event = threading.Event()
+            JOB_CANCEL_EVENTS[job_id] = event
+        return event
+
+
+def is_abort_requested(job_id: str) -> bool:
+    return get_cancel_event(job_id).is_set()
+
+
+def register_process(job_id: str, proc: subprocess.Popen) -> None:
+    with RUNNING_PROCS_LOCK:
+        RUNNING_PROCS.setdefault(job_id, set()).add(proc)
+
+
+def unregister_process(job_id: str, proc: subprocess.Popen) -> None:
+    with RUNNING_PROCS_LOCK:
+        procs = RUNNING_PROCS.get(job_id)
+        if not procs:
+            return
+        procs.discard(proc)
+        if not procs:
+            RUNNING_PROCS.pop(job_id, None)
+
+
+def abort_job_runtime(job_id: str) -> bool:
+    event = get_cancel_event(job_id)
+    event.set()
+    aborted_any = False
+    with RUNNING_PROCS_LOCK:
+        procs = list(RUNNING_PROCS.get(job_id, set()))
+    for proc in procs:
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                aborted_any = True
+        except Exception:
+            pass
+    job = update_job(job_id, abort_requested=True)
+    return bool(job) or aborted_any
+
+
+def mark_job_aborted(job_id: str, message: str = 'Job aborted by user') -> None:
+    update_job(job_id, status='aborted', error=message)
+    append_log(job_id, message)
+
+
+def ensure_not_aborted(job_id: str) -> None:
+    if is_abort_requested(job_id):
+        raise RuntimeError('Job aborted by user')
 
 
 # -------------------------------
@@ -209,6 +289,145 @@ def parse_existing_lyrics(vtt_path: Path) -> str:
     return "\n".join(lines).strip()
 
 
+def normalize_compare_text(value: str) -> str:
+    value = (value or '').replace('，', ',').replace('–', '-').replace('—', '-')
+    value = re.sub(r'\s+', ' ', value).strip().lower()
+    return value
+
+
+def split_artist_names(value: str) -> list[str]:
+    value = (value or '').replace('，', ',').replace('&', ',')
+    parts = re.split(r'\s*,\s*|\s*/\s*|\s+feat\.?\s+|\s+ft\.?\s+', value, flags=re.I)
+    return [normalize_compare_text(part) for part in parts if normalize_compare_text(part)]
+
+
+def read_audio_metadata(file_path: Path) -> dict:
+    cmd = [
+        'ffprobe', '-v', 'quiet', '-print_format', 'json',
+        '-show_entries', 'format_tags=title,artist,album,lyrics',
+        str(file_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return {'title': '', 'artist': '', 'album': '', 'lyrics': ''}
+    try:
+        data = json.loads(result.stdout or '{}')
+    except Exception:
+        return {'title': '', 'artist': '', 'album': '', 'lyrics': ''}
+    tags = ((data.get('format') or {}).get('tags') or {})
+    def _get(*keys):
+        for key in keys:
+            if tags.get(key):
+                return str(tags.get(key)).strip()
+        return ''
+    return {
+        'title': _get('title', 'TITLE'),
+        'artist': _get('artist', 'ARTIST'),
+        'album': _get('album', 'ALBUM'),
+        'lyrics': _get('lyrics', 'LYRICS', 'unsyncedlyrics', 'UNSYNCEDLYRICS'),
+    }
+
+
+def metadata_matches_filename(file_path: Path, payload: dict) -> bool:
+    existing = read_audio_metadata(file_path)
+    requested_title = normalize_compare_text(payload.get('song_name', ''))
+    requested_album = normalize_compare_text(payload.get('album_name', ''))
+    requested_artists = set(split_artist_names(payload.get('artist_names', '')))
+    existing_title = normalize_compare_text(existing.get('title', ''))
+    existing_album = normalize_compare_text(existing.get('album', ''))
+    existing_artists = set(split_artist_names(existing.get('artist', '')))
+
+    title_ok = bool(requested_title) and requested_title == existing_title
+    artists_ok = bool(requested_artists) and requested_artists == existing_artists
+    if not title_ok or not artists_ok:
+        return False
+    if requested_album and requested_album != 'unknown':
+        return requested_album == existing_album
+    return True
+
+
+def google_search_html(query: str, search_type: str = '') -> str:
+    params = {'q': query, 'hl': 'en'}
+    if search_type == 'images':
+        params['tbm'] = 'isch'
+    url = 'https://www.google.com/search?' + '&'.join(f"{k}={quote_plus(v)}" for k, v in params.items())
+    response = requests.get(url, headers=DEFAULT_HEADERS, timeout=20)
+    response.raise_for_status()
+    return response.text
+
+
+def find_image_url_in_html(html: str) -> str:
+    patterns = [
+        r'https://encrypted-tbn0\.gstatic\.com/images\?[^"\']+',
+        r'https://lh3\.googleusercontent\.com/[^"\']+',
+        r'https://[^"\']+\.(?:jpg|jpeg|png|webp)',
+    ]
+    for pattern in patterns:
+        matches = re.findall(pattern, html)
+        for match in matches:
+            if 'gstatic' in match or 'googleusercontent' in match or re.search(r'\.(jpg|jpeg|png|webp)(?:$|[?&])', match, re.I):
+                return unescape(match)
+    return ''
+
+
+def fetch_google_image_file(query: str, temp_dir: Path, logger) -> str:
+    try:
+        html = google_search_html(query, search_type='images')
+        image_url = find_image_url_in_html(html)
+        if not image_url:
+            logger('Google Images album art not found')
+            return ''
+        suffix = Path(urlparse(image_url).path).suffix or '.jpg'
+        dest = temp_dir / f'google_cover{suffix}'
+        response = requests.get(image_url, headers=DEFAULT_HEADERS, timeout=20)
+        response.raise_for_status()
+        dest.write_bytes(response.content)
+        logger('Fetched album art from Google Images search')
+        return str(dest)
+    except Exception as exc:
+        logger(f'Google Images album art skipped: {exc}')
+        return ''
+
+
+def extract_google_lyrics(html: str) -> str:
+    text = unescape(html)
+    text = re.sub(r'<script.*?</script>', ' ', text, flags=re.S | re.I)
+    text = re.sub(r'<style.*?</style>', ' ', text, flags=re.S | re.I)
+    text = re.sub(r'<[^>]+>', '\n', text)
+    lines = [re.sub(r'\s+', ' ', line).strip() for line in text.splitlines()]
+    lines = [line for line in lines if line]
+    candidates = []
+    for i, line in enumerate(lines):
+        low = line.lower()
+        if 'lyrics' in low and i + 1 < len(lines):
+            block = []
+            for nxt in lines[i+1:i+25]:
+                if len(nxt.split()) <= 1 and not re.search(r'[a-zA-Z]', nxt):
+                    continue
+                if 'searches related to' in nxt.lower() or 'people also ask' in nxt.lower():
+                    break
+                block.append(nxt)
+            if block:
+                candidates.append('\n'.join(block[:16]))
+    if candidates:
+        return max(candidates, key=len)
+    return ''
+
+
+def fetch_google_lyrics(query: str, logger) -> str:
+    try:
+        html = google_search_html(query + ' lyrics')
+        lyrics = extract_google_lyrics(html)
+        if lyrics:
+            logger('Fetched lyrics from Google search')
+            return lyrics
+        logger('Google lyrics search returned no extractable lyrics')
+        return ''
+    except Exception as exc:
+        logger(f'Google lyrics search skipped: {exc}')
+        return ''
+
+
 def parse_filename_metadata(file_name: str) -> dict:
     base = Path(file_name).stem.replace('，', ',').replace('–', '-').replace('—', '-').strip()
     parts = [part.strip() for part in base.split(' - ') if part.strip()]
@@ -268,15 +487,20 @@ def fetch_source_info(source: str, temp_dir: Path, logger) -> dict:
         "title": (info.get("track") or info.get("title") or "").strip(),
         "artist": (info.get("artist") or info.get("uploader") or "").strip(),
         "album": (info.get("album") or "").strip(),
+        "thumbnail_url": (info.get("thumbnail") or "").strip(),
         "thumbnail_file": str(thumbnail_file) if thumbnail_file and thumbnail_file.exists() else "",
         "lyrics": lyrics_text,
     }
 
 
-def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) -> None:
+def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) -> bool:
     requested_title = (payload.get("song_name") or "").strip()
     requested_artist = (payload.get("artist_names") or "").strip()
     requested_album = (payload.get("album_name") or "").strip()
+
+    if metadata_matches_filename(file_path, payload):
+        logger('Metadata already matches filename-derived values; skipping retag')
+        return False
 
     with tempfile.TemporaryDirectory(prefix="songdown_meta_") as temp_dir_str:
         temp_dir = Path(temp_dir_str)
@@ -300,8 +524,20 @@ def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) ->
             metadata["artist"] = (source_info.get("artist") or "").strip()
         if not metadata["album"]:
             metadata["album"] = (source_info.get("album") or "").strip()
+
+        if metadata["album"]:
+            google_image_query = ' '.join(x for x in [metadata["title"], metadata["album"], metadata["artist"], 'album cover'] if x)
+            metadata["thumbnail_file"] = fetch_google_image_file(google_image_query, temp_dir, logger)
+
+        if not metadata["thumbnail_file"]:
+            metadata["thumbnail_file"] = (source_info.get("thumbnail_file") or "").strip()
+            if metadata["thumbnail_file"]:
+                logger('Using YouTube thumbnail as album art')
+
         metadata["lyrics"] = (source_info.get("lyrics") or "").strip()
-        metadata["thumbnail_file"] = (source_info.get("thumbnail_file") or "").strip()
+        if not metadata["lyrics"]:
+            google_lyrics_query = ' '.join(x for x in [metadata["title"], metadata["artist"], metadata["album"]] if x)
+            metadata["lyrics"] = fetch_google_lyrics(google_lyrics_query, logger)
 
         output_file = file_path.with_name(f"{file_path.stem}.retag{file_path.suffix}")
         ffmpeg_cmd = ["ffmpeg", "-y", "-i", str(file_path)]
@@ -341,6 +577,7 @@ def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) ->
             f"lyrics={'yes' if metadata['lyrics'] else 'no'}, "
             f"album_art={'yes' if metadata['thumbnail_file'] else 'no'}"
         )
+        return True
 
 
 # -------------------------------
@@ -382,10 +619,17 @@ def run_download_job(job_id: str) -> None:
         ]
 
         append_log(job_id, "Running yt-dlp")
+        ensure_not_aborted(job_id)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        register_process(job_id, proc)
         last_progress = 1
         if proc.stdout is not None:
             for raw_line in proc.stdout:
+                if is_abort_requested(job_id):
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
                 line = raw_line.rstrip()
                 if line:
                     append_log(job_id, line)
@@ -394,9 +638,13 @@ def run_download_job(job_id: str) -> None:
                         last_progress = max(last_progress, progress)
                         set_progress(job_id, last_progress)
         return_code = proc.wait()
+        unregister_process(job_id, proc)
+        if is_abort_requested(job_id):
+            raise RuntimeError('Job aborted by user')
         if return_code != 0:
             raise RuntimeError(f"yt-dlp failed with exit code {return_code}")
 
+        ensure_not_aborted(job_id)
         set_progress(job_id, max(last_progress, 95))
         downloaded = find_downloaded_file(DOWNLOADS_DIR, marker)
         if not downloaded:
@@ -437,6 +685,9 @@ def run_download_job(job_id: str) -> None:
         )
 
     except Exception as exc:
+        if 'aborted by user' in str(exc).lower():
+            mark_job_aborted(job_id)
+            return
         update_job(job_id, status="failed", error=str(exc), progress=100)
         append_log(job_id, f"ERROR: {exc}")
 
@@ -457,10 +708,17 @@ def run_retag_job(job_id: str) -> None:
             raise FileNotFoundError("Selected song file was not found")
 
         append_log(job_id, f"Retagging file: {target}")
+        ensure_not_aborted(job_id)
         source = resolve_source(payload)
-        enrich_file_metadata(target, payload, source, lambda line: append_log(job_id, line))
+        changed = enrich_file_metadata(target, payload, source, lambda line: append_log(job_id, line))
+        ensure_not_aborted(job_id)
+        if not changed:
+            append_log(job_id, "Retag skipped because metadata already matches filename")
         update_job(job_id, status="completed", final_file=str(target), progress=100)
     except Exception as exc:
+        if 'aborted by user' in str(exc).lower():
+            mark_job_aborted(job_id)
+            return
         update_job(job_id, status="failed", error=str(exc), progress=100)
         append_log(job_id, f"ERROR: {exc}")
 
@@ -472,27 +730,69 @@ def run_retag_all_job(job_id: str) -> None:
     if not job:
         return
     try:
-        songs = []
-        for path in sorted(MUSIC_ROOT.rglob('*')):
-            if path.is_file() and path.suffix.lower() == '.mp3':
-                songs.append(path)
+        songs = [path for path in sorted(MUSIC_ROOT.rglob('*')) if path.is_file() and path.suffix.lower() == '.mp3']
         total = len(songs)
         if not total:
             raise FileNotFoundError('No songs found in music library')
-        for idx, target in enumerate(songs, start=1):
+
+        max_workers = max(4, min(16, (os.cpu_count() or 4) * 2))
+        append_log(job_id, f'Retag-all started with {total} songs using {max_workers} workers')
+        completed = 0
+        failed = 0
+        cancelled = get_cancel_event(job_id)
+
+        def worker(target: Path) -> tuple[str, bool, str]:
+            if cancelled.is_set():
+                return target.name, False, 'aborted before start'
             meta = parse_filename_metadata(target.name)
             payload = {**meta, 'selected_file': safe_music_relative(target), 'youtube_url': ''}
-            append_log(job_id, f"Retagging {target.name}")
             source = resolve_source(payload)
+            local_logs: list[str] = [f'Retagging {target.name}']
             try:
-                enrich_file_metadata(target, payload, source, lambda line: append_log(job_id, line))
+                changed = enrich_file_metadata(target, payload, source, lambda line: local_logs.append(line))
+                if not changed:
+                    local_logs.append(f'Skipped {target.name}: metadata already matches filename')
+                return target.name, True, '\n'.join(local_logs)
             except Exception as exc:
-                append_log(job_id, f"Skipped {target.name}: {exc}")
-            update_job(job_id, progress=int(idx * 100 / total))
+                local_logs.append(f'Skipped {target.name}: {exc}')
+                return target.name, False, '\n'.join(local_logs)
+
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix='retagall') as executor:
+            futures = {executor.submit(worker, song): song for song in songs}
+            for future in as_completed(futures):
+                name = futures[future].name
+                if cancelled.is_set():
+                    for fut in futures:
+                        fut.cancel()
+                    break
+                try:
+                    _name, ok, logs_text = future.result()
+                    for line in logs_text.splitlines():
+                        append_log(job_id, line)
+                    if ok:
+                        completed += 1
+                    else:
+                        failed += 1
+                except Exception as exc:
+                    append_log(job_id, f'Skipped {name}: {exc}')
+                    failed += 1
+                done = completed + failed
+                update_job(job_id, progress=int(done * 100 / total))
+
+        if cancelled.is_set():
+            mark_job_aborted(job_id, f'Job aborted by user after processing {completed + failed} / {total} songs')
+            return
+
+        append_log(job_id, f'Retag-all completed: success={completed}, failed={failed}, total={total}')
         update_job(job_id, status='completed', progress=100)
     except Exception as exc:
+        if 'aborted by user' in str(exc).lower():
+            mark_job_aborted(job_id)
+            return
         update_job(job_id, status='failed', error=str(exc), progress=100)
         append_log(job_id, f'ERROR: {exc}')
+
+recover_stale_jobs()
 
 # -------------------------------
 # Routes
@@ -529,9 +829,15 @@ def get_jobs():
 def clear_jobs():
     with JOBS_LOCK:
         jobs = load_jobs()
-        remaining = [job for job in jobs if job.get("status") not in {"completed", "failed"}]
+        remaining = [job for job in jobs if job.get("status") not in {"completed", "failed", "aborted"}]
         save_jobs(remaining)
     return jsonify({"ok": True})
+
+
+@app.route("/api/jobs/<job_id>/abort", methods=["POST"])
+def abort_job(job_id: str):
+    ok = abort_job_runtime(job_id)
+    return jsonify({"ok": ok})
 
 
 @app.route("/api/library-songs", methods=["GET"])

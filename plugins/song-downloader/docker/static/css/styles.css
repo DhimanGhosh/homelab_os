@@ -69,3 +69,6 @@ pre { white-space: pre-wrap; word-break: break-word; background: #0f1729; border
 
 
 .section-spacer{margin-bottom:22px}.section-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.helper-text{margin:0 0 14px;color:#9ca3af;line-height:1.5}.retag-card{margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08)}.small-btn{padding:10px 14px;font-size:.92rem}.no-clear select{width:100%;border:none;outline:none;background:transparent;color:inherit;padding:14px 16px;border-radius:14px}select option{color:#111827}
+.job-actions-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.job-status.aborted{color:#f9a8d4;}
+.abort-btn{white-space:nowrap;}

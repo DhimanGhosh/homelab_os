@@ -57,7 +57,9 @@ function renderLibrarySongOptions(songs, preferredValue = '') {
   const search = (el('library_song_search')?.value || '').trim().toLowerCase();
   const filtered = songs.filter((song) => {
     if (!search) return true;
-    return (song.path || '').toLowerCase().includes(search) || (song.name || '').toLowerCase().includes(search) || (song.label || '').toLowerCase().includes(search);
+    return (song.path || '').toLowerCase().includes(search)
+      || (song.name || '').toLowerCase().includes(search)
+      || (song.label || '').toLowerCase().includes(search);
   });
 
   const currentValue = preferredValue || select.value;
@@ -93,6 +95,16 @@ function rememberOpenLogs() {
   });
 }
 
+async function abortJob(jobId) {
+  const res = await fetch(`/api/jobs/${jobId}/abort`, { method: 'POST' });
+  const data = await res.json();
+  if (!data.ok) {
+    alert('Unable to abort this job');
+    return;
+  }
+  fetchJobs();
+}
+
 function renderJobs(jobs) {
   rememberOpenLogs();
   const container = el('jobsContainer');
@@ -107,6 +119,7 @@ function renderJobs(jobs) {
     const album = job.payload?.album_name || 'Unknown';
     const youtube = job.payload?.youtube_url || 'Search mode';
     const jobType = job.payload?.job_type || 'download';
+    const canAbort = ['queued', 'running'].includes(job.status);
     const card = document.createElement('article');
     card.className = 'job-card';
     card.innerHTML = `
@@ -115,7 +128,10 @@ function renderJobs(jobs) {
           <div class="job-status ${job.status}">${job.status}</div>
           <div class="job-time">${job.updated_at || job.created_at}</div>
         </div>
-        <div class="job-id">${job.id.slice(0, 8)}</div>
+        <div class="job-actions-top">
+          <div class="job-id">${job.id.slice(0, 8)}</div>
+          ${canAbort ? `<button type="button" class="ghost-btn danger small-btn abort-btn" data-job-id="${job.id}">Abort job</button>` : ''}
+        </div>
       </div>
       <div class="job-main">
         <div><strong>Type:</strong> ${jobType}</div>
@@ -142,6 +158,8 @@ function renderJobs(jobs) {
       if (event.currentTarget.open) openLogs.add(job.id);
       else openLogs.delete(job.id);
     });
+    const abortBtn = card.querySelector('.abort-btn');
+    if (abortBtn) abortBtn.addEventListener('click', () => abortJob(job.id));
   });
 }
 
