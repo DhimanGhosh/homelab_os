@@ -18,7 +18,7 @@ import requests
 from flask import Flask, jsonify, request, send_from_directory
 
 APP_NAME = os.getenv("APP_NAME", "Song Downloader")
-APP_VERSION = "1.0.11"
+APP_VERSION = "1.1.2"
 PORT = int(os.getenv("PORT", "8145"))
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/song-downloader/data")).resolve()
@@ -438,6 +438,36 @@ def parse_filename_metadata(file_name: str) -> dict:
     return {'song_name': base, 'album_name': '', 'artist_names': ''}
 
 
+def build_download_payload_from_batch_item(song_key: str, item: dict) -> dict:
+    file_name = (item.get("file_name") or song_key or "").strip()
+    parsed = parse_filename_metadata(file_name)
+    return {
+        "song_name": (parsed.get("song_name") or song_key or "").strip(),
+        "artist_names": (parsed.get("artist_names") or "").strip(),
+        "album_name": (parsed.get("album_name") or "").strip(),
+        "youtube_url": (item.get("ytb_link") or "").strip(),
+        "rename_to": file_name,
+        "auto_move": True,
+        "album_art_url": (item.get("album_art") or "").strip(),
+    }
+
+
+def fetch_remote_image_file(image_url: str, temp_dir: Path, logger, prefix: str = 'cover') -> str:
+    if not image_url:
+        return ''
+    try:
+        suffix = Path(urlparse(image_url).path).suffix or '.jpg'
+        dest = temp_dir / f'{prefix}{suffix}'
+        response = requests.get(image_url, headers=DEFAULT_HEADERS, timeout=30)
+        response.raise_for_status()
+        dest.write_bytes(response.content)
+        logger(f'Fetched album art from provided URL')
+        return str(dest)
+    except Exception as exc:
+        logger(f'Provided album art fetch skipped: {exc}')
+        return ''
+
+
 def fetch_source_info(source: str, temp_dir: Path, logger) -> dict:
     info_cmd = ["yt-dlp", "--no-playlist", "-J", source]
     result = subprocess.run(info_cmd, capture_output=True, text=True, check=True)
@@ -525,7 +555,11 @@ def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) ->
         if not metadata["album"]:
             metadata["album"] = (source_info.get("album") or "").strip()
 
-        if metadata["album"]:
+        requested_album_art_url = (payload.get("album_art_url") or "").strip()
+        if requested_album_art_url:
+            metadata["thumbnail_file"] = fetch_remote_image_file(requested_album_art_url, temp_dir, logger, prefix='provided_cover')
+
+        if not metadata["thumbnail_file"] and metadata["album"]:
             google_image_query = ' '.join(x for x in [metadata["title"], metadata["album"], metadata["artist"], 'album cover'] if x)
             metadata["thumbnail_file"] = fetch_google_image_file(google_image_query, temp_dir, logger)
 
@@ -792,6 +826,46 @@ def run_retag_all_job(job_id: str) -> None:
         update_job(job_id, status='failed', error=str(exc), progress=100)
         append_log(job_id, f'ERROR: {exc}')
 
+
+
+def run_download_batch_jobs(batch_job_id: str, items: list[tuple[str, dict]]) -> None:
+    batch_job = update_job(batch_job_id, status='running', progress=1)
+    if not batch_job:
+        return
+    total = len(items)
+    if total == 0:
+        update_job(batch_job_id, status='failed', error='No batch items found', progress=100)
+        return
+    append_log(batch_job_id, f'Queued {total} songs from JSON batch')
+    created = 0
+    for index, (song_key, item) in enumerate(items, start=1):
+        ensure_not_aborted(batch_job_id)
+        try:
+            payload = build_download_payload_from_batch_item(song_key, item)
+            if not payload['youtube_url']:
+                append_log(batch_job_id, f'Skipped {song_key}: missing ytb_link')
+                continue
+            if not payload['song_name'] or not payload['artist_names']:
+                append_log(batch_job_id, f'Skipped {song_key}: file_name must follow <song> - <artist> or <song> - <album> - <artist>')
+                continue
+            job = create_job({**payload, 'job_type': 'download'})
+            threading.Thread(target=run_download_job, args=(job['id'],), daemon=True).start()
+            created += 1
+            append_log(batch_job_id, f'Queued: {payload["rename_to"] or payload["song_name"]}')
+        except Exception as exc:
+            append_log(batch_job_id, f'Skipped {song_key}: {exc}')
+        update_job(batch_job_id, progress=int(index * 100 / total))
+
+    if is_abort_requested(batch_job_id):
+        mark_job_aborted(batch_job_id, f'Batch queue aborted after {created} / {total} items')
+        return
+
+    final_status = 'completed' if created else 'failed'
+    final_error = '' if created else 'No valid songs could be queued from JSON batch'
+    update_job(batch_job_id, status=final_status, progress=100, error=final_error)
+    append_log(batch_job_id, f'Batch queue complete: queued={created}, total={total}')
+
+
 recover_stale_jobs()
 
 # -------------------------------
@@ -860,6 +934,25 @@ def download():
     threading.Thread(target=run_download_job, args=(job["id"],), daemon=True).start()
     return jsonify({"ok": True, "job_id": job["id"]})
 
+
+
+
+@app.route("/api/download-batch", methods=["POST"])
+def download_batch():
+    payload = request.get_json(force=True) or {}
+    json_text = (payload.get("json_text") or "").strip()
+    if not json_text:
+        return jsonify({"ok": False, "error": "JSON payload is required"}), 400
+    try:
+        parsed = json.loads(json_text)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Invalid JSON: {exc}"}), 400
+    if not isinstance(parsed, dict):
+        return jsonify({"ok": False, "error": "JSON payload must be an object"}), 400
+    items = list(parsed.items())
+    job = create_job({"job_type": "download-batch", "song_name": f"{len(items)} songs from JSON"})
+    threading.Thread(target=run_download_batch_jobs, args=(job["id"], items), daemon=True).start()
+    return jsonify({"ok": True, "job_id": job["id"]})
 
 @app.route("/api/retag", methods=["POST"])
 def retag():

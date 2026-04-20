@@ -61,6 +61,14 @@
             </div>
           </label>
 
+          <label>
+            <span>Album art URL (optional)</span>
+            <div class="input-wrap">
+              <input type="url" id="album_art_url" placeholder="https://example.com/cover.jpg" />
+              <button type="button" class="clear-btn" data-target="album_art_url">×</button>
+            </div>
+          </label>
+
           <label class="full-width">
             <span>Rename to (optional)</span>
             <div class="input-wrap">
@@ -77,7 +85,26 @@
 
         <div class="form-actions">
           <button type="submit" class="primary-btn">Start download</button>
-          <button type="button" id="clearJobsBtn" class="ghost-btn danger">Clear jobs</button>
+          
+        </div>
+      </form>
+
+      <form id="batchDownloadForm" class="download-form retag-card">
+        <div class="section-title-row">
+          <h2>Multi song download from JSON</h2>
+        </div>
+        <p class="helper-text">
+          Paste a JSON object in the format <code>{"song name": {"ytb_link": "...", "file_name": "song - album - artists", "album_art": "..."}}</code>.
+          Each valid entry will be queued as a separate download job using the provided filename format.
+        </p>
+        <label class="full-width">
+          <span>JSON payload</span>
+          <div class="input-wrap no-clear">
+            <textarea id="batch_json" rows="10" placeholder='{"Aami Shei Manushta Aar Nei": {"ytb_link": "https://www.youtube.com/watch?v=N178XIPHHfI", "file_name": "Aami Shei Manushta Aar Nei - Dawshom Awbotaar - Anupam Roy", "album_art": "https://www.jiosaavn.com/album/dawshom-awbotaar/FEi6is4tAQ4_"}}'></textarea>
+          </div>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="primary-btn">Queue multi song download</button>
         </div>
       </form>
 
@@ -136,6 +163,14 @@
               <button type="button" class="clear-btn" data-target="retag_youtube_url">×</button>
             </div>
           </label>
+
+          <label>
+            <span>Album art URL (optional)</span>
+            <div class="input-wrap">
+              <input type="url" id="retag_album_art_url" placeholder="https://example.com/cover.jpg" />
+              <button type="button" class="clear-btn" data-target="retag_album_art_url">×</button>
+            </div>
+          </label>
         </div>
 
         <div class="form-actions">
@@ -148,6 +183,7 @@
     <section class="jobs-card">
       <div class="jobs-header">
         <h2>Jobs</h2>
+        <button type="button" id="clearJobsBtn" class="ghost-btn danger">Clear jobs</button>
       </div>
       <div id="jobsContainer" class="jobs-container">
         <div class="empty-state">No jobs yet.</div>

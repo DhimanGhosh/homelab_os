@@ -14,6 +14,7 @@ function buildPayload(prefix = '') {
     artist_names: el(`${prefix}artist_names`).value.trim(),
     album_name: el(`${prefix}album_name`).value.trim(),
     youtube_url: el(`${prefix}youtube_url`).value.trim(),
+    album_art_url: el(`${prefix}album_art_url`) ? el(`${prefix}album_art_url`).value.trim() : '',
     rename_to: prefix ? '' : el('rename_to').value.trim(),
     auto_move: prefix ? true : el('auto_move').checked,
     selected_file: prefix ? el('selected_file').value : '',
@@ -29,56 +30,81 @@ function clearInputs(ids) {
   });
 }
 
+
 function parseSongFilename(filePath) {
   const rawName = (filePath || '').split('/').pop() || '';
   const base = rawName.replace(/\.mp3$/i, '').trim();
-  if (!base) return { song_name: '', album_name: '', artist_names: '' };
-  const normalized = base.replace(/[–—]/g, '-').replace(/[，]/g, ',').replace(/\s+-\s+/g, ' - ').trim();
+  if (!base) {
+    return { song_name: '', album_name: '', artist_names: '' };
+  }
+
+  const normalized = base
+    .replace(/[–—]/g, '-')
+    .replace(/[，]/g, ',')
+    .replace(/\s+-\s+/g, ' - ')
+    .trim();
+
   const parts = normalized.split(' - ').map((part) => part.trim()).filter(Boolean);
   if (parts.length >= 3) {
-    return { song_name: parts[0], album_name: parts.slice(1, -1).join(' - '), artist_names: parts[parts.length - 1] };
+    return {
+      song_name: parts[0],
+      album_name: parts.slice(1, -1).join(' - '),
+      artist_names: parts[parts.length - 1],
+    };
   }
   if (parts.length === 2) {
-    return { song_name: parts[0], album_name: '', artist_names: parts[1] };
+    return {
+      song_name: parts[0],
+      album_name: '',
+      artist_names: parts[1],
+    };
   }
   return { song_name: normalized, album_name: '', artist_names: '' };
 }
 
 function autofillRetagFieldsFromSelection() {
   const selected = el('selected_file').value;
+  if (!selected) {
+    if (el('retag_song_name')) el('retag_song_name').value = '';
+    if (el('retag_album_name')) el('retag_album_name').value = '';
+    if (el('retag_artist_names')) el('retag_artist_names').value = '';
+    return;
+  }
   const parsed = parseSongFilename(selected);
-  el('retag_song_name').value = parsed.song_name || '';
-  el('retag_album_name').value = parsed.album_name || '';
-  el('retag_artist_names').value = parsed.artist_names || '';
+
+  if (el('retag_song_name')) {
+    el('retag_song_name').value = parsed.song_name || '';
+  }
+  if (el('retag_album_name')) {
+    el('retag_album_name').value = parsed.album_name || '';
+  }
+  if (el('retag_artist_names')) {
+    el('retag_artist_names').value = parsed.artist_names || '';
+  }
 }
 
 function renderLibrarySongOptions(songs, preferredValue = '') {
   const select = el('selected_file');
   const search = (el('library_song_search')?.value || '').trim().toLowerCase();
-  const filtered = songs.filter((song) => {
-    if (!search) return true;
-    return (song.path || '').toLowerCase().includes(search)
-      || (song.name || '').toLowerCase().includes(search)
-      || (song.label || '').toLowerCase().includes(search);
-  });
+  const filtered = songs.filter((song) => !search || song.path.toLowerCase().includes(search));
 
-  const currentValue = preferredValue || select.value;
-  select.innerHTML = '<option value="">Select a song from /mnt/nas/media/music</option>';
+  select.innerHTML = '<option value=>Select a song from /mnt/nas/media/music</option>';
   filtered.forEach((song) => {
     const option = document.createElement('option');
     option.value = song.path;
-    option.textContent = song.name;
-    option.title = song.path;
+    option.textContent = song.path;
     select.appendChild(option);
   });
 
-  if (currentValue && filtered.some((song) => song.path === currentValue)) {
-    select.value = currentValue;
+  const desiredValue = preferredValue || select.value;
+  if (desiredValue && Array.from(select.options).some((option) => option.value === desiredValue)) {
+    select.value = desiredValue;
   } else if (filtered.length === 1) {
     select.value = filtered[0].path;
   } else {
     select.value = '';
   }
+
   autofillRetagFieldsFromSelection();
 }
 
@@ -95,16 +121,6 @@ function rememberOpenLogs() {
   });
 }
 
-async function abortJob(jobId) {
-  const res = await fetch(`/api/jobs/${jobId}/abort`, { method: 'POST' });
-  const data = await res.json();
-  if (!data.ok) {
-    alert('Unable to abort this job');
-    return;
-  }
-  fetchJobs();
-}
-
 function renderJobs(jobs) {
   rememberOpenLogs();
   const container = el('jobsContainer');
@@ -113,13 +129,13 @@ function renderJobs(jobs) {
     container.innerHTML = '<div class="empty-state">No jobs yet.</div>';
     return;
   }
+
   jobs.forEach((job) => {
     const song = job.payload?.song_name || job.payload?.selected_file || '—';
     const artists = job.payload?.artist_names || '—';
     const album = job.payload?.album_name || 'Unknown';
     const youtube = job.payload?.youtube_url || 'Search mode';
     const jobType = job.payload?.job_type || 'download';
-    const canAbort = ['queued', 'running'].includes(job.status);
     const card = document.createElement('article');
     card.className = 'job-card';
     card.innerHTML = `
@@ -128,10 +144,7 @@ function renderJobs(jobs) {
           <div class="job-status ${job.status}">${job.status}</div>
           <div class="job-time">${job.updated_at || job.created_at}</div>
         </div>
-        <div class="job-actions-top">
-          <div class="job-id">${job.id.slice(0, 8)}</div>
-          ${canAbort ? `<button type="button" class="ghost-btn danger small-btn abort-btn" data-job-id="${job.id}">Abort job</button>` : ''}
-        </div>
+        <div class="job-id">${job.id.slice(0, 8)}</div>
       </div>
       <div class="job-main">
         <div><strong>Type:</strong> ${jobType}</div>
@@ -158,8 +171,6 @@ function renderJobs(jobs) {
       if (event.currentTarget.open) openLogs.add(job.id);
       else openLogs.delete(job.id);
     });
-    const abortBtn = card.querySelector('.abort-btn');
-    if (abortBtn) abortBtn.addEventListener('click', () => abortJob(job.id));
   });
 }
 
@@ -172,26 +183,65 @@ async function fetchJobs() {
 async function fetchLibrarySongs() {
   const res = await fetch('/api/library-songs', { cache: 'no-store' });
   const data = await res.json();
-  librarySongs = data.songs || [];
-  renderLibrarySongOptions(librarySongs, el('selected_file').value);
+  const select = el('selected_file');
+  const previousValue = select.value;
+  select.innerHTML = '<option value="">Select a song from /mnt/nas/media/music</option>';
+  (data.songs || []).forEach((song) => {
+    const option = document.createElement('option');
+    option.value = song.path;
+    option.textContent = song.path;
+    select.appendChild(option);
+  });
+  if (previousValue && Array.from(select.options).some((option) => option.value === previousValue)) {
+    select.value = previousValue;
+  }
+  autofillRetagFieldsFromSelection();
 }
 
 async function submitDownload(event) {
   event.preventDefault();
   const payload = buildPayload('');
+
   if (!payload.youtube_url && (!payload.song_name || !payload.artist_names)) {
     alert('Provide either a YouTube link or at least song name + artist names.');
     return;
   }
+
   const res = await fetch('/api/download', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
-  const data = await res.json();
-  if (!data.ok) {
-    alert('Failed to queue download');
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {}; }
+  if (!res.ok || !data.ok) {
+    alert(data.error || 'Failed to queue download');
     return;
   }
   fetchJobs();
+}
+
+
+async function submitBatchDownload(event) {
+  event.preventDefault();
+  const jsonText = el('batch_json').value.trim();
+  if (!jsonText) {
+    alert('Paste the JSON batch payload first.');
+    return;
+  }
+  const res = await fetch('/api/download-batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ json_text: jsonText }),
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {}; }
+  if (!res.ok || !data.ok) {
+    alert(data.error || 'Failed to queue JSON batch download');
+    return;
+  }
+  fetchJobs();
+  el('batch_json').value = '';
 }
 
 async function submitRetag(event) {
@@ -201,22 +251,20 @@ async function submitRetag(event) {
     alert('Select a downloaded song to retag.');
     return;
   }
-  const res = await fetch('/api/retag', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!data.ok) {
-    alert('Failed to queue retag job');
+  if (!payload.youtube_url && (!payload.song_name || !payload.artist_names)) {
+    alert('Provide either a YouTube link or at least song name + artist names for metadata lookup.');
     return;
   }
-  fetchJobs();
-}
 
-async function retagAll() {
-  const res = await fetch('/api/retag-all', { method: 'POST' });
-  const data = await res.json();
-  if (!data.ok) {
-    alert('Failed to queue retag-all job');
+  const res = await fetch('/api/retag', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {}; }
+  if (!res.ok || !data.ok) {
+    alert(data.error || 'Failed to queue retag job');
     return;
   }
   fetchJobs();
@@ -225,37 +273,36 @@ async function retagAll() {
 async function clearJobs() {
   openLogs.clear();
   await fetch('/api/jobs/clear', { method: 'POST' });
-  await fetchJobs();
+  fetchJobs();
 }
 
-async function resetApp() {
+async function refreshJobsAndClearInputs() {
   clearInputs([
-    'song_name', 'artist_names', 'album_name', 'youtube_url', 'rename_to',
-    'retag_song_name', 'retag_artist_names', 'retag_album_name', 'retag_youtube_url', 'selected_file', 'library_song_search',
+    'song_name', 'artist_names', 'album_name', 'youtube_url', 'album_art_url', 'rename_to', 'batch_json',
+    'retag_song_name', 'retag_artist_names', 'retag_album_name', 'retag_youtube_url', 'retag_album_art_url', 'selected_file',
   ]);
   await clearJobs();
-  await fetchLibrarySongs();
+  await fetchJobs();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.clear-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const target = el(btn.dataset.target);
-      if (target) {
-        target.value = '';
-        if (btn.dataset.target === 'library_song_search') renderLibrarySongOptions(librarySongs, el('selected_file').value);
-      }
+      if (target) target.value = '';
     });
   });
 
   el('downloadForm').addEventListener('submit', submitDownload);
   el('retagForm').addEventListener('submit', submitRetag);
-  el('refreshJobsBtn').addEventListener('click', resetApp);
+  if (el('batchDownloadForm')) el('batchDownloadForm').addEventListener('submit', submitBatchDownload);
+  el('refreshJobsBtn').addEventListener('click', refreshJobsAndClearInputs);
   el('clearJobsBtn').addEventListener('click', clearJobs);
   el('refreshLibraryBtn').addEventListener('click', fetchLibrarySongs);
-  el('retagAllBtn').addEventListener('click', retagAll);
   el('selected_file').addEventListener('change', autofillRetagFieldsFromSelection);
-  el('library_song_search').addEventListener('input', () => renderLibrarySongOptions(librarySongs, el('selected_file').value));
+  el('library_song_search').addEventListener('input', () => {
+    renderLibrarySongOptions(librarySongs, el('selected_file').value);
+  });
 
   fetchHealth();
   fetchJobs();
