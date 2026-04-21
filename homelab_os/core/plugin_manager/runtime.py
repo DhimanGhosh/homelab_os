@@ -75,7 +75,7 @@ class PluginRuntime:
             self.write_runtime_metadata(plugin_id, metadata)
         return url
 
-    def start_plugin(self, plugin_id: str) -> dict:
+    def start_plugin(self, plugin_id: str, timeout: int | None = None) -> dict:
         plugin_dir = self.plugin_runtime_dir(plugin_id)
         if not plugin_dir.exists():
             raise FileNotFoundError(f"Installed plugin not found: {plugin_dir}")
@@ -97,6 +97,7 @@ class PluginRuntime:
                     "--remove-orphans",
                 ),
                 cwd=compose_dir,
+                timeout=timeout,
             )
             public_url = self._maybe_apply_public_route(plugin_id)
             self.state_store.update_plugin_state(plugin_id, {

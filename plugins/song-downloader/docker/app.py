@@ -19,14 +19,16 @@ from flask import Flask, jsonify, request, send_from_directory
 APP_NAME = os.getenv("APP_NAME", "Song Downloader")
 PLUGIN_JSON = Path(__file__).resolve().parents[1] / "plugin.json"
 try:
-    APP_VERSION = json.loads(PLUGIN_JSON.read_text(encoding="utf-8")).get("version", os.getenv("APP_VERSION", "1.1.6"))
+    APP_VERSION = json.loads(PLUGIN_JSON.read_text(encoding="utf-8")).get("version", os.getenv("APP_VERSION", "1.3.1"))
 except Exception:
-    APP_VERSION = os.getenv("APP_VERSION", "1.1.6")
+    APP_VERSION = os.getenv("APP_VERSION", "1.3.1")
 PORT = int(os.getenv("PORT", "8145"))
 MUSIC_ROOT = Path(os.getenv("MUSIC_ROOT", "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/song-downloader/data")).resolve()
 DOWNLOADS_DIR = Path(os.getenv("DOWNLOADS_DIR", "/mnt/nas/homelab/runtime/song-downloader/downloads")).resolve()
 JOBS_FILE = APP_DATA_DIR / "jobs.json"
+DEFAULT_COOKIES_FILE = APP_DATA_DIR / "cookies.txt"
+DENO_BIN = Path(os.getenv("DENO_BIN", "/usr/local/bin/deno")).resolve()
 
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -273,6 +275,49 @@ def normalize_download_payload(payload: dict) -> dict:
     payload["rename_to"] = rename_to
     return payload
 
+
+def resolve_cookies_file(payload: dict | None = None) -> Path | None:
+    payload = dict(payload or {})
+    explicit = (payload.get("cookies_path") or "").strip()
+    candidates: list[Path] = []
+    if explicit:
+        explicit_path = Path(explicit)
+        if not explicit_path.is_absolute():
+            explicit_path = (APP_DATA_DIR / explicit_path).resolve()
+        candidates.append(explicit_path)
+    candidates.append(DEFAULT_COOKIES_FILE)
+
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except Exception:
+            continue
+        if resolved.exists() and resolved.is_file():
+            return resolved
+    return None
+
+
+def yt_dlp_base_cmd(payload: dict | None = None) -> list[str]:
+    cmd = [
+        "yt-dlp",
+        "--no-playlist",
+        "--js-runtimes",
+        f"deno:{DENO_BIN}",
+    ]
+    cookies_file = resolve_cookies_file(payload)
+    if cookies_file:
+        cmd.extend(["--cookies", str(cookies_file)])
+    return cmd
+
+
+def log_yt_dlp_runtime(job_id: str, payload: dict) -> None:
+    cookies_file = resolve_cookies_file(payload)
+    if cookies_file:
+        append_log(job_id, f"Using cookies file: {cookies_file}")
+    else:
+        append_log(job_id, f"No cookies file found. Auto path checked: {DEFAULT_COOKIES_FILE}")
+    append_log(job_id, f"Using JS runtime: deno ({DENO_BIN})")
+
 def _extract_progress_percent(line: str) -> int | None:
     match = re.search(r'\[download\]\s+(\d+(?:\.\d+)?)%', line)
     if not match:
@@ -354,8 +399,8 @@ def metadata_matches_filename(file_path: Path, title: str, album: str, artist: s
     return title_ok and artist_ok and album_ok
 
 
-def fetch_source_info(source: str, temp_dir: Path, logger) -> dict:
-    info_cmd = ["yt-dlp", "--no-playlist", "-J", source]
+def fetch_source_info(source: str, temp_dir: Path, logger, payload: dict | None = None) -> dict:
+    info_cmd = [*yt_dlp_base_cmd(payload), "-J", source]
     result = subprocess.run(info_cmd, capture_output=True, text=True, check=True)
     info = json.loads(result.stdout or "{}")
 
@@ -376,8 +421,7 @@ def fetch_source_info(source: str, temp_dir: Path, logger) -> dict:
     lyrics_text = ""
     subs_base = temp_dir / "subs"
     subs_cmd = [
-        "yt-dlp",
-        "--no-playlist",
+        *yt_dlp_base_cmd(payload),
         "--skip-download",
         "--write-auto-sub",
         "--write-sub",
@@ -427,7 +471,7 @@ def enrich_file_metadata(file_path: Path, payload: dict, source: str, logger) ->
             metadata["thumbnail_file"] = provided_art
 
         try:
-            source_info = fetch_source_info(source, temp_dir, logger)
+            source_info = fetch_source_info(source, temp_dir, logger, payload)
         except Exception as exc:
             logger(f"Metadata lookup skipped: {exc}")
             source_info = {}
@@ -504,17 +548,17 @@ def run_download_job(job_id: str) -> None:
 
     try:
         append_log(job_id, "Preparing download job")
+        log_yt_dlp_runtime(job_id, payload)
         source = resolve_source(payload)
         marker = f"job_{job_id.replace('-', '')}"
         output_template = str(DOWNLOADS_DIR / f"{marker}.%(ext)s")
 
         cmd = [
-            "yt-dlp",
+            *yt_dlp_base_cmd(payload),
             "--extract-audio",
             "--audio-format", "mp3",
             "--audio-quality", "0",
             "--embed-metadata",
-            "--no-playlist",
             "--newline",
             "-o", output_template,
             source,
@@ -602,6 +646,7 @@ def run_retag_job(job_id: str) -> None:
             raise FileNotFoundError("Selected song file was not found")
 
         append_log(job_id, f"Retagging file: {target}")
+        log_yt_dlp_runtime(job_id, payload)
         source = resolve_source(payload)
         enrich_file_metadata(target, payload, source, lambda line: append_log(job_id, line))
         if is_abort_requested(job_id):
@@ -654,6 +699,7 @@ def run_retag_all_job(job_id: str) -> None:
             append_log(job_id, f"Skipping {path.name}: metadata already matches filename")
         else:
             append_log(job_id, f"Retagging {path.name}")
+            log_yt_dlp_runtime(job_id, payload)
             source = resolve_source(payload)
             enrich_file_metadata(path, payload, source, lambda line: append_log(job_id, line))
         with completed_lock:
@@ -707,6 +753,9 @@ def health():
         "version": APP_VERSION,
         "music_root": str(MUSIC_ROOT),
         "downloads_dir": str(DOWNLOADS_DIR),
+        "auto_cookies_path": str(DEFAULT_COOKIES_FILE),
+        "auto_cookies_present": DEFAULT_COOKIES_FILE.exists(),
+        "deno_bin": str(DENO_BIN),
     })
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return response
@@ -774,6 +823,7 @@ def download_batch():
             "rename_to": file_name or song_name,
             "auto_move": True,
             "album_art_url": (item.get("album_art") or "").strip(),
+            "cookies_path": (item.get("cookies_path") or "").strip(),
             "job_type": "download-batch",
         })
         job = create_job(job_payload)

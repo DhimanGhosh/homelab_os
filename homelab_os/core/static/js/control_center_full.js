@@ -139,8 +139,9 @@ function renderJobs() {
   const jobs = (state.jobs || []).slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
   area.innerHTML = jobs.length
     ? jobs.map((j) => {
-      const showLog = j.status === 'running' || j.status === 'queued';
-      return `<div class="job-card"><div class="row between"><strong>${esc(j.job_type)}</strong><span class="status-pill ${j.status === 'failed' ? 'status-missing' : 'status-installed'}">${esc(j.status)}</span></div><div class="muted small">Job ID: ${esc(j.job_id)}</div><div class="muted small">Target: ${esc(j.target)}</div><div class="muted small">Status: ${esc(j.status)}</div><div class="muted small">Progress: ${esc(j.progress)}%</div><div class="progress compact"><div style="width:${pct(j.progress)}%"></div></div>${showLog ? `<div class="actions"><button class="secondary" data-show-log="${esc(j.job_id)}">Show log</button></div>` : ''}</div>`;
+      const showLog = true;
+      const msg = j.message ? `<div class="muted small">Step: ${esc(j.message)}</div>` : '';
+      return `<div class="job-card"><div class="row between"><strong>${esc(j.job_type)}</strong><span class="status-pill ${j.status === 'failed' ? 'status-missing' : 'status-installed'}">${esc(j.status)}</span></div><div class="muted small">Job ID: ${esc(j.job_id)}</div><div class="muted small">Target: ${esc(j.target)}</div><div class="muted small">Status: ${esc(j.status)}</div>${msg}<div class="muted small">Progress: ${esc(j.progress)}%</div><div class="progress compact"><div style="width:${pct(j.progress)}%"></div></div>${showLog ? `<div class="actions"><button class="secondary" data-show-log="${esc(j.job_id)}">Show log</button></div>` : ''}</div>`;
     }).join('')
     : '<div class="muted">No install jobs yet.</div>';
   document.querySelectorAll('[data-show-log]').forEach((el) => {
@@ -174,6 +175,12 @@ async function refreshSelectedLog() {
   const current = box.scrollTop;
   box.textContent = data.logs || 'No log available.';
   box.scrollTop = selectedLogAutoScroll ? box.scrollHeight : current;
+}
+
+
+async function triggerSelfHeal() {
+  await apiJson('/api/control-center/self-heal', { method: 'POST' });
+  await refreshSummary();
 }
 
 async function pluginAction(pluginId, action) {
@@ -254,6 +261,7 @@ document.getElementById('drawerBackdrop')?.addEventListener('click', () => toggl
 document.getElementById('menuRescanBtn')?.addEventListener('click', async () => { await apiJson('/api/control-center/marketplace/rescan', { method: 'POST' }); toggleMenu(false); await refreshSummary(); });
 document.getElementById('menuInstallAllBtn')?.addEventListener('click', async () => { await apiJson('/api/control-center/install-all', { method: 'POST' }); toggleMenu(false); await refreshSummary(); });
 document.getElementById('menuUpdateAllBtn')?.addEventListener('click', async () => { await apiJson('/api/control-center/update-all', { method: 'POST' }); toggleMenu(false); await refreshSummary(); });
+document.getElementById('menuSelfHealBtn')?.addEventListener('click', async () => { await triggerSelfHeal(); toggleMenu(false); });
 document.getElementById('menuNotificationsBtn')?.addEventListener('click', () => { toggleMenu(false); document.getElementById('logCard').style.display = 'block'; document.getElementById('logBox').textContent = 'Notifications will appear here once notification endpoints are migrated.'; });
 
 document.getElementById('copyLogBtn')?.addEventListener('click', async () => navigator.clipboard.writeText(document.getElementById('logBox').textContent || ''));

@@ -19,6 +19,7 @@ from homelab_os.core.services.app_catalog import load_app_catalog
 from homelab_os.core.services.jobs import JobStore
 from homelab_os.core.services.logging_service import LoggingService
 from homelab_os.core.services.reverse_proxy import ReverseProxyService
+from homelab_os.core.services.recovery import RecoveryService
 
 router = APIRouter()
 
@@ -359,6 +360,45 @@ def _runtime_job(job_id: str, action: str, plugin_id: str) -> None:
     except Exception as exc:
         logs.append_job_log(job_id, f"{action} failed: {exc}")
         jobs.update_job(job_id, status="failed", progress=100, error=str(exc))
+
+
+def _self_heal_job(job_id: str) -> None:
+    settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    catalog = load_app_catalog(str(settings.app_catalog_file))
+
+    def log(message: str) -> None:
+        logs.append_job_log(job_id, message)
+
+    def progress(value: int, message: str) -> None:
+        jobs.update_job(job_id, status="running", progress=value, message=message)
+        log(message)
+
+    service = RecoveryService(
+        settings=settings,
+        app_catalog=catalog,
+        caddy_service=proxy,
+        plugin_runtime=runtime,
+        plugin_registry=registry,
+        log_fn=log,
+        progress_fn=progress,
+    )
+
+    try:
+        progress(1, "Queued self-heal job")
+        summary = service.self_heal()
+        jobs.update_job(job_id, status="completed", progress=100, result=summary)
+    except Exception as exc:
+        logs.append_job_log(job_id, f"Self-heal failed: {exc}")
+        jobs.update_job(job_id, status="failed", progress=100, error=str(exc))
+
+
+@router.post("/control-center/self-heal")
+def trigger_self_heal(background_tasks: BackgroundTasks) -> dict:
+    settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    job = jobs.create_job("self_heal", "host", {"source": "control_center"})
+    logs.append_job_log(job["job_id"], "Queued self-heal from Control Center")
+    background_tasks.add_task(_self_heal_job, job["job_id"])
+    return {"job_id": job["job_id"]}
 
 
 @router.post("/control-center/plugins/{plugin_id}/{action}")

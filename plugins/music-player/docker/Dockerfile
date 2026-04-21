@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
 WORKDIR /app
-RUN pip install --no-cache-dir mutagen
+RUN pip install --no-cache-dir flask mutagen
+
 COPY app.py /app/app.py
 COPY templates /app/templates
 COPY static /app/static

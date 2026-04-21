@@ -14,6 +14,8 @@ from homelab_os.core.services.network_stack import NetworkStackService
 from homelab_os.core.services.reverse_proxy import ReverseProxyService
 from homelab_os.core.services.systemd_service import CoreServiceManager
 from homelab_os.core.services.recovery import RecoveryService
+from homelab_os.core.plugin_manager.registry import PluginRegistry
+from homelab_os.core.services.app_catalog import load_app_catalog
 
 app = typer.Typer(help='homelab_os command line interface')
 
@@ -255,28 +257,60 @@ def run_control_shell(env_file: str = '.env') -> None:
 
 @app.command('self-heal')
 def self_heal(env_file: str = '.env') -> None:
-    settings = load_settings(env_file)
-    ensure_runtime_dirs(settings)
-    service = RecoveryService(settings)
-    summary = service.run()
-    typer.echo(f"Docker root: {summary['docker_root']}")
-    typer.echo(f"Docker root changed: {summary['docker_root_changed']}")
-    typer.echo(f"Rebound routes: {len(summary['rebound_routes'])}")
-    for plugin_id, public_url in summary['rebound_routes'].items():
-        typer.echo(f"  {plugin_id}: {public_url}")
-    typer.echo(f"Started plugins: {len(summary['started_plugins'])}")
-    for plugin_id, public_url in summary['started_plugins'].items():
-        typer.echo(f"  {plugin_id}: {public_url}")
-    if summary.get('repaired_plugins'):
-        typer.echo(f"Layer repairs: {len(summary['repaired_plugins'])}")
-        for plugin_id in summary['repaired_plugins']:
-            typer.echo(f"  {plugin_id}")
-    if summary.get('warnings'):
-        typer.echo('Warnings:')
-        for warning in summary['warnings']:
-            typer.echo(f"  - {warning}")
-    if summary.get('pihole'):
-        typer.echo(f"Pi-hole: {summary['pihole']}")
+    settings, job_store, logger = _job_services(env_file)
+    runtime = PluginRuntime(settings.runtime_installed_plugins_dir, settings.manifests_dir / 'plugin_state.json', settings=settings)
+    registry = PluginRegistry(settings.manifests_dir / 'installed_plugins.json')
+    proxy = ReverseProxyService(settings)
+    catalog = load_app_catalog(str(settings.app_catalog_file))
+
+    job = job_store.create_job('self_heal', 'host', {'env_file': env_file})
+
+    def log(message: str) -> None:
+        typer.echo(message)
+        logger.append_job_log(job['job_id'], message)
+
+    def progress(value: int, message: str) -> None:
+        job_store.update_job(job['job_id'], status='running', progress=value, message=message)
+        log(message)
+
+    service = RecoveryService(
+        settings=settings,
+        app_catalog=catalog,
+        caddy_service=proxy,
+        plugin_runtime=runtime,
+        plugin_registry=registry,
+        log_fn=log,
+        progress_fn=progress,
+    )
+
+    try:
+        progress(1, 'Queued self-heal job')
+        summary = service.self_heal()
+        job_store.update_job(job['job_id'], status='completed', progress=100, result=summary)
+        typer.echo(f"Job ID: {job['job_id']}")
+        typer.echo(f"Docker root: {summary['docker_root']}")
+        typer.echo(f"Docker root changed: {summary['docker_root_changed']}")
+        typer.echo(f"Docker repaired: {summary.get('docker_repaired', False)}")
+        typer.echo(f"Rebound routes: {len(summary['rebound_routes'])}")
+        for item in summary['rebound_routes']:
+            typer.echo(f"  {item.get('plugin_id')}: {item.get('public_url')}")
+        typer.echo(f"Started plugins: {len(summary['started_plugins'])}")
+        for item in summary['started_plugins']:
+            typer.echo(f"  {item.get('plugin_id')}: {item.get('public_url')}")
+        if summary.get('timed_out_plugins'):
+            typer.echo('Timed out plugins:')
+            for plugin_id in summary['timed_out_plugins']:
+                typer.echo(f"  - {plugin_id}")
+        if summary.get('warnings'):
+            typer.echo('Warnings:')
+            for warning in summary['warnings']:
+                typer.echo(f"  - {warning}")
+        if summary.get('pihole'):
+            typer.echo(f"Pi-hole: {summary['pihole']}")
+    except Exception as exc:
+        logger.append_job_log(job['job_id'], f'Self-heal failed: {exc}')
+        job_store.update_job(job['job_id'], status='failed', progress=100, error=str(exc))
+        raise
 
 if __name__ == '__main__':
     app()

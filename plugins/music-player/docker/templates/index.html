@@ -1,214 +1,126 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Music Player</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
+
 <body>
   <div id="mobileOverlay" class="mobile-overlay hidden"></div>
-  <div class="app-shell">
-    <aside id="sidebar" class="sidebar">
-      <div class="brand-header">
-        <div>
-          <div class="brand-title">Music Player</div>
-          <div id="brandVersion" class="brand-version">v7.3.4</div>
+
+  <div class="yt-shell">
+    <aside id="sidebar" class="yt-sidebar">
+      <div class="sidebar-top">
+        <button id="menuToggleBtn" class="icon-btn menu-toggle" type="button">☰</button>
+        <div class="yt-logo">
+          <span class="logo-dot">▶</span>
+          <span>Music</span>
         </div>
-        <button id="closeSidebarBtn" class="icon-btn sidebar-close">✕</button>
       </div>
-      <nav class="sidebar-nav">
-        <button class="nav-btn active" data-view="all">All Songs</button>
-        <button class="nav-btn" data-view="playlists">Playlists</button>
-        <button class="nav-btn" data-view="artists">Artists</button>
-        <button class="nav-btn" data-view="albums">Albums</button>
-        <button class="nav-btn" data-view="folders">Folders</button>
-        <button class="nav-btn" data-view="release_years">Release Years</button>
+
+      <nav class="yt-nav">
+        <button class="yt-nav-btn active" data-view="home" type="button"><span>🏠</span><span>Home</span></button>
+        <button class="yt-nav-btn" data-view="all" type="button"><span>🎵</span><span>All Songs</span></button>
+        <button class="yt-nav-btn" data-view="artists" type="button"><span>🎤</span><span>Artists</span></button>
+        <button class="yt-nav-btn" data-view="albums" type="button"><span>💿</span><span>Albums</span></button>
+        <button class="yt-nav-btn" data-view="playlists" type="button"><span>📚</span><span>Playlists</span></button>
+        <button class="yt-nav-btn" data-view="folders" type="button"><span>📁</span><span>Folders</span></button>
       </nav>
-      <div id="currentContext" class="current-context hidden"></div>
-      <div class="sidebar-section">
-        <div class="sidebar-label">Saved playlists</div>
-        <div id="savedPlaylists" class="saved-playlists"></div>
+
+      <div class="sidebar-divider"></div>
+
+      <div class="playlist-panel">
+        <div class="playlist-head">
+          <div>Saved playlists</div>
+          <button id="newPlaylistBtn" class="ghost-btn small" type="button">+ New</button>
+        </div>
+        <div id="sidebarPlaylists" class="sidebar-playlists"></div>
       </div>
     </aside>
 
-    <main class="main-panel">
-      <header class="topbar" id="topbar">
-        <div class="topbar-left">
-          <button id="menuToggle" class="icon-btn menu-toggle">☰</button>
-          <div class="search-wrap">
-            <input id="searchInput" class="search-input" placeholder="Search songs, artists, albums, folders" />
-            <button id="clearSearchBtn" class="clear-search-btn hidden">×</button>
-          </div>
+    <main class="yt-main">
+      <header class="yt-topbar">
+        <div class="topbar-search-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="searchInput" class="topbar-search" type="search"
+            placeholder="Search songs, albums, artists, folders" />
         </div>
+
         <div class="topbar-actions">
-          <button id="shuffleAllBtn" class="ghost-btn">Shuffle all</button>
-          <button id="settingsBtn" class="ghost-btn">Settings</button>
-          <button id="refreshBtn" class="ghost-btn">Refresh</button>
+          <button id="shuffleAllBtn" class="ghost-btn" type="button">Shuffle all</button>
+          <button id="refreshBtn" class="ghost-btn" type="button">Refresh</button>
         </div>
       </header>
 
-      <section id="selectionBar" class="selection-bar hidden">
-        <div id="selectedCount" class="selected-count">0 selected</div>
-        <div class="selection-actions">
-          <button id="addToPlaylistBtn" class="primary-btn" disabled>Add to playlist</button>
-          <button id="addToFolderBtn" class="ghost-btn" disabled>Add to folder</button>
-          <button id="clearSelectionBtn" class="ghost-btn" disabled>Clear selection</button>
-        </div>
-      </section>
-
-      <section class="content-card">
-        <div class="content-head">
-          <div>
-            <h2 id="contentTitle">All Songs</h2>
-            <div id="contentMeta" class="content-meta"></div>
-          </div>
-          <div id="contextActions"></div>
-        </div>
-        <div id="tracksContainer" class="tracks-container"></div>
-      </section>
+      <section id="chipsBar" class="chips-bar"></section>
+      <section id="contextHeader" class="context-header hidden"></section>
+      <section id="contentArea" class="content-area"></section>
     </main>
   </div>
 
   <footer class="player-bar" id="playerBar">
-    <div class="player-bar-clickzone" id="playerBarClickzone"></div>
-    <div class="player-art-wrap">
-      <img id="nowArt" class="now-art hidden" alt="Album art" />
-      <div id="nowArtFallback" class="now-art-fallback">♪</div>
-    </div>
-    <div class="now-playing">
-      <div id="nowTitle" class="now-title">Nothing playing</div>
-      <div id="nowArtist" class="now-artist">Select a track</div>
-      <div id="nowSource" class="now-source">playing from —</div>
-      <div class="now-meta-row">
-        <div id="nowAlbum" class="now-album">Album: Unknown</div>
-        <div id="nowYear" class="now-year"></div>
+    <div class="player-now">
+      <div id="playerArt" class="player-art"><span>♪</span></div>
+      <div class="player-meta">
+        <div id="playerTitle" class="player-title">Nothing playing</div>
+        <div id="playerSub" class="player-sub">Select a track to start playback</div>
       </div>
-      <div id="lyricsBox" class="lyrics-box">Lyrics will appear here when available.</div>
     </div>
-    <div class="player-controls controls-sticky" id="miniControls">
-      <div class="control-row">
-        <button id="prevBtn" class="icon-btn control-btn">⏮</button>
-        <button id="playPauseBtn" class="icon-btn control-btn">▶</button>
-        <button id="nextBtn" class="icon-btn control-btn">⏭</button>
-        <button id="shuffleToggleBtn" class="icon-btn control-btn">🔀</button>
-        <button id="repeatToggleBtn" class="icon-btn control-btn">Off</button>
+
+    <div class="player-center">
+      <div class="player-controls">
+        <button id="prevBtn" class="icon-btn" type="button">⏮</button>
+        <button id="playPauseBtn" class="icon-btn play-btn" type="button">▶</button>
+        <button id="nextBtn" class="icon-btn" type="button">⏭</button>
       </div>
+
       <div class="seek-row">
-        <span id="currentTime">0:00</span>
-        <div id="seekTrack" class="seek-track" role="slider" aria-label="Seek">
-          <div id="seekFill" class="seek-fill"></div>
-          <div id="seekThumb" class="seek-thumb"></div>
-        </div>
-        <span id="totalTime">0:00</span>
+        <span id="timeCurrent">0:00</span>
+        <input id="seekRange" class="seek-range" type="range" min="0" max="1000" value="0" />
+        <span id="timeTotal">0:00</span>
       </div>
-      <div id="queueInfo" class="queue-info">Queue: 0 song(s)</div>
+    </div>
+
+    <div class="player-right">
+      <button id="shuffleBtn" class="icon-btn" type="button">🔀</button>
+      <button id="repeatBtn" class="icon-btn" type="button">Off</button>
+      <button id="queueBtn" class="icon-btn" type="button">≡</button>
     </div>
   </footer>
 
-  <section id="nowPlayingOverlay" class="now-overlay hidden">
-    <div class="now-overlay-panel">
-      <div class="now-overlay-head">
+  <div id="queueDrawer" class="queue-drawer hidden">
+    <div class="queue-drawer-panel">
+      <div class="queue-drawer-head">
         <div>
-          <div class="brand-title">Now Playing</div>
-          <div id="overlaySource" class="brand-version">playing from —</div>
+          <div class="queue-title">Current queue</div>
+          <div id="queueSubtitle" class="queue-subtitle">0 song(s)</div>
         </div>
-        <button id="closeNowOverlayBtn" class="icon-btn">✕</button>
+        <button id="closeQueueBtn" class="icon-btn" type="button">✕</button>
       </div>
-      <div class="now-overlay-body">
-        <div class="now-overlay-left">
-          <img id="overlayArt" class="overlay-art hidden" alt="Album art" />
-          <div id="overlayArtFallback" class="overlay-art overlay-art-fallback">♪</div>
-          <div id="overlayTitle" class="overlay-title">Nothing playing</div>
-          <div id="overlayArtist" class="overlay-artist">Select a track</div>
-          <div class="overlay-meta"><div id="overlayAlbum">Album: Unknown</div><div id="overlayYear"></div></div>
-          <div id="overlayLyrics" class="overlay-lyrics">Lyrics will appear here when available.</div>
-        </div>
-        <div class="now-overlay-right">
-          <div class="overlay-queue-top"><div class="overlay-queue-title">Current queue</div><div class="overlay-queue-hint">Swipe up to expand queue</div></div><div id="overlayQueueHandle" class="overlay-queue-handle" aria-hidden="true"></div>
-          <div id="overlayQueue" class="overlay-queue"></div>
-        </div>
-      </div>
-      <div class="overlay-seek-wrap">
-        <div class="control-row overlay-control-row">
-          <button id="overlayPrevBtn" class="icon-btn control-btn">⏮</button>
-          <button id="overlayPlayPauseBtn" class="icon-btn control-btn">▶</button>
-          <button id="overlayNextBtn" class="icon-btn control-btn">⏭</button>
-          <button id="overlayShuffleBtn" class="icon-btn control-btn">🔀</button>
-          <button id="overlayRepeatBtn" class="icon-btn control-btn">Off</button>
-        </div>
-        <div class="seek-row overlay-seek-row">
-          <span id="overlayCurrentTime">0:00</span>
-          <input id="overlaySeekBar" class="seek-range" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek overlay" />
-          <span id="overlayTotalTime">0:00</span>
-        </div>
-      </div>
+      <div id="queueList" class="queue-list"></div>
     </div>
-  </section>
-
-  <audio id="audioPlayer" preload="metadata"></audio>
+  </div>
 
   <div id="playlistModal" class="modal hidden">
-    <div class="modal-backdrop" data-close="playlist"></div>
+    <div class="modal-backdrop"></div>
     <div class="modal-dialog">
-      <div class="modal-head"><h3>Add to playlist</h3><button id="closePlaylistModalBtn" class="close-btn">×</button></div>
+      <div class="modal-head">
+        <h3>Create playlist</h3>
+        <button id="closePlaylistModalBtn" class="icon-btn" type="button">✕</button>
+      </div>
       <div class="modal-body">
-        <div id="selectedSongsPreview" class="muted-label"></div>
-        <div id="playlistList" class="playlist-list"></div>
-        <div class="new-playlist-row">
-          <input id="newPlaylistName" class="search-input" placeholder="New playlist name" />
-          <button id="createPlaylistBtn" class="primary-btn">Create + add</button>
+        <input id="playlistNameInput" class="text-input" type="text" placeholder="Playlist name" />
+        <div class="modal-actions">
+          <button id="createPlaylistConfirmBtn" class="ghost-btn" type="button">Create</button>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="folderModal" class="modal hidden">
-    <div class="modal-backdrop" data-close="folder"></div>
-    <div class="modal-dialog">
-      <div class="modal-head"><h3>Add to folder</h3><button id="closeFolderModalBtn" class="close-btn">×</button></div>
-      <div class="modal-body">
-        <div id="folderList" class="playlist-list"></div>
-        <div class="new-playlist-row">
-          <input id="newFolderName" class="search-input" placeholder="New folder name" />
-          <button id="createFolderBtn" class="primary-btn">Create + add</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="settingsModal" class="modal hidden">
-    <div class="modal-backdrop" data-close="settings"></div>
-    <div class="modal-dialog">
-      <div class="modal-head"><h3>Player settings</h3><button id="closeSettingsModalBtn" class="close-btn">×</button></div>
-      <div class="modal-body">
-        <label class="checkbox-row"><input id="transitionEnabled" type="checkbox" /><span>Enable smooth transition</span></label>
-        <label><span>Transition duration (seconds)</span><input id="transitionSeconds" class="search-input" type="number" min="0" max="10" step="0.5" /></label>
-        <div class="muted-label">Transition settings are available here and saved in the browser.</div>
-        <div><button id="saveSettingsBtn" class="primary-btn">Save settings</button></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="metadataModal" class="modal hidden">
-    <div class="modal-backdrop" data-close="metadata"></div>
-    <div class="modal-dialog">
-      <div class="modal-head"><h3>Edit song metadata</h3><button id="closeMetadataModalBtn" class="close-btn">×</button></div>
-      <div class="modal-body">
-        <input id="metaTrackPath" type="hidden" />
-        <label><span>Title</span><input id="metaTitle" class="search-input" /></label>
-        <label><span>Artist names</span><input id="metaArtist" class="search-input" /></label>
-        <label><span>Album</span><input id="metaAlbum" class="search-input" /></label>
-        <label><span>Release year</span><input id="metaYear" class="search-input" /></label>
-        <label><span>Lyrics</span><textarea id="metaLyrics" class="search-input lyrics-editor"></textarea></label>
-        <label><span>Album art image URL (optional)</span><input id="metaArtUrl" class="search-input" placeholder="https://...jpg" /></label>
-        <div><button id="saveMetadataBtn" class="primary-btn">Save metadata</button></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="trackMenu" class="track-menu hidden"></div>
-
-  <script src="/static/js/script.js" defer></script>
+  <script src="/static/js/script.js"></script>
 </body>
+
 </html>

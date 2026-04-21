@@ -12,6 +12,7 @@ class ProcessRunner:
         check: bool = True,
         capture_output: bool = True,
         text: bool = True,
+        timeout: int | None = None,
     ) -> subprocess.CompletedProcess:
         return subprocess.run(
             cmd,
@@ -19,6 +20,7 @@ class ProcessRunner:
             check=check,
             capture_output=capture_output,
             text=text,
+            timeout=timeout,
         )
 
     def popen(
