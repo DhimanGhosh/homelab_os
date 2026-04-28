@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ app_name }}</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo">⚡</div>
+      <div>
+        <h1>{{ app_name }}</h1>
+        <span class="version">v{{ app_version }}</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Status cards -->
+    <section class="section">
+      <h2>Service Status</h2>
+      <div class="cards" id="status-cards">
+        <div class="card skeleton"></div>
+        <div class="card skeleton"></div>
+        <div class="card skeleton"></div>
+      </div>
+    </section>
+
+    <!-- API groups -->
+    <section class="section">
+      <h2>Available APIs</h2>
+
+      <div class="api-group">
+        <div class="api-group-header">
+          <span class="dot dot-green"></span>
+          <h3>Gateway</h3>
+        </div>
+        <div class="route-list">
+          <div class="route"><span class="method get">GET</span><code>/api/health</code><span class="desc">Gateway health check</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/debug/upstreams</code><span class="desc">Check connectivity to all upstream services</span></div>
+          <div class="route"><span class="method get">GET</span><code>/docs</code><span class="desc">Interactive Swagger UI (full API reference)</span></div>
+        </div>
+      </div>
+
+      <div class="api-group">
+        <div class="api-group-header">
+          <span class="dot dot-blue"></span>
+          <h3>Music Player</h3>
+        </div>
+        <div class="route-list">
+          <div class="route"><span class="method get">GET</span><code>/api/music/library</code><span class="desc">Full library — tracks, albums, artists, playlists</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/music/stream/{relpath}</code><span class="desc">Stream an audio file</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/music/metadata/{relpath}</code><span class="desc">Get track metadata</span></div>
+          <div class="route"><span class="method post">POST</span><code>/api/music/metadata/{relpath}</code><span class="desc">Update track metadata &amp; art</span></div>
+          <div class="route"><span class="method post">POST</span><code>/api/music/playlists</code><span class="desc">Create or update a playlist</span></div>
+          <div class="route"><span class="method post">POST</span><code>/api/music/playlists/add-tracks</code><span class="desc">Add tracks to a playlist</span></div>
+          <div class="route"><span class="method post">POST</span><code>/api/music/artist-image/{artist}</code><span class="desc">Set artist image</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/music/art-cache/{filename}</code><span class="desc">Cached album art</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/music/artist-images/{filename}</code><span class="desc">Stored artist images</span></div>
+        </div>
+      </div>
+
+      <div class="api-group">
+        <div class="api-group-header">
+          <span class="dot dot-yellow"></span>
+          <h3>Files</h3>
+        </div>
+        <div class="route-list">
+          <div class="route"><span class="method get">GET</span><code>/api/files/health</code><span class="desc">Check FileBrowser service reachability</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/files/info</code><span class="desc">Connection info &amp; browse URL</span></div>
+        </div>
+      </div>
+
+      <div class="api-group">
+        <div class="api-group-header">
+          <span class="dot dot-red"></span>
+          <h3>Pi-hole</h3>
+        </div>
+        <div class="route-list">
+          <div class="route"><span class="method get">GET</span><code>/api/pihole/health</code><span class="desc">Check Pi-hole admin reachability</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/pihole/summary</code><span class="desc">DNS stats summary</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/pihole/status</code><span class="desc">Pi-hole enabled / disabled status</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/pihole/top-items</code><span class="desc">Top queried &amp; blocked domains</span></div>
+          <div class="route"><span class="method get">GET</span><code>/api/pihole/query-types</code><span class="desc">DNS query type breakdown</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/js/script.js"></script>
+</body>
+</html>

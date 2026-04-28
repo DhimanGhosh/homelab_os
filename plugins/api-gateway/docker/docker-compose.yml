@@ -1,16 +1,13 @@
 services:
   api-gateway:
     build: .
-    container_name: homelab-api-gateway
-    restart: unless-stopped
+    container_name: api-gateway
     network_mode: host
     environment:
-      LIBRARY_API: http://127.0.0.1:8132
-      DICTIONARY_API: http://127.0.0.1:8133
-      STATUSBOARD_API: http://127.0.0.1:8131
-      NAVIDROME_API: http://127.0.0.1:4533
-      NEXTCLOUD_STORAGE_PATH: /data/nextcloud
-      INCOMING_DROP_PATH: /mnt/nas/homelab/media_drop/Incoming
-    volumes:
-      - /mnt/nas/homelab/media_drop/Incoming:/mnt/nas/homelab/media_drop/Incoming
-      - ./data:/data
+      PORT: "8134"
+      APP_NAME: "API Gateway"
+      APP_VERSION: "1.4.0"
+      MUSIC_PLAYER_API: "http://127.0.0.1:8140"
+      FILES_API: "http://127.0.0.1:8088"
+      PIHOLE_API: "http://127.0.0.1:8080"
+    restart: unless-stopped

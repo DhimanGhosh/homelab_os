@@ -1,15 +1,14 @@
 {
   "id": "api-gateway",
   "name": "API Gateway",
-  "version": "1.3.0",
+  "version": "1.4.0",
+  "runtime_type": "docker",
   "network": {
-    "internal_port": 8134
+    "internal_port": 8134,
+    "public_port": 8134
   },
   "entrypoint": {
     "type": "web",
     "path": "/docs"
-  },
-  "backend": {
-    "type": "docker"
   }
 }

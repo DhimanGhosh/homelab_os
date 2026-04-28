@@ -1,0 +1,162 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0f1117;
+  --surface:   #1a1d27;
+  --surface2:  #22263a;
+  --border:    #2e3250;
+  --text:      #e2e8f0;
+  --muted:     #8892a4;
+  --accent:    #6366f1;
+  --green:     #22c55e;
+  --blue:      #3b82f6;
+  --yellow:    #eab308;
+  --red:       #ef4444;
+  --radius:    10px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 18px 32px;
+}
+.header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.logo { font-size: 28px; }
+h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+.version {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1px 8px;
+}
+
+/* ── Main ───────────────────────────────────────────────────────────────────── */
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+.section { margin-bottom: 40px; }
+.section > h2 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+/* ── Status cards ───────────────────────────────────────────────────────────── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color 0.2s;
+}
+.card-ok  { border-left: 3px solid var(--green); }
+.card-err { border-left: 3px solid var(--red);   }
+.card-icon { font-size: 24px; }
+.card-name { font-weight: 600; font-size: 14px; }
+.card-status { font-size: 12px; margin-top: 2px; font-weight: 500; }
+.status-ok  { color: var(--green); }
+.status-err { color: var(--red);   }
+.skeleton {
+  height: 64px;
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ── API groups ─────────────────────────────────────────────────────────────── */
+.api-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.api-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.api-group-header h3 { font-size: 14px; font-weight: 600; }
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-green  { background: var(--green);  }
+.dot-blue   { background: var(--blue);   }
+.dot-yellow { background: var(--yellow); }
+.dot-red    { background: var(--red);    }
+
+.route-list { padding: 4px 0; }
+.route {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.route:last-child { border-bottom: none; }
+.method {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  width: 46px;
+  text-align: center;
+}
+.get  { background: #14532d; color: var(--green); }
+.post { background: #1e3a5f; color: var(--blue);  }
+code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  color: var(--accent);
+  background: rgba(99,102,241,0.08);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.desc { font-size: 13px; color: var(--muted); }
+
+.error { color: var(--red); padding: 12px 0; }
+
+@media (max-width: 600px) {
+  header { padding: 14px 16px; }
+  main   { padding: 20px 12px 48px; }
+  .route { flex-direction: column; align-items: flex-start; gap: 4px; }
+}

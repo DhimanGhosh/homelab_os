@@ -1,7 +1,11 @@
 FROM python:3.11-slim
+
 WORKDIR /app
-COPY requirements.txt .
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/* && pip install --no-cache-dir -r requirements.txt
-COPY app /app/app
+RUN pip install --no-cache-dir fastapi uvicorn requests jinja2 python-multipart
+
+COPY app.py /app/app.py
+COPY templates /app/templates
+COPY static /app/static
+
 EXPOSE 8134
-CMD ["python","-m","uvicorn","app.main:app","--host","0.0.0.0","--port","8134"]
+CMD ["python", "/app/app.py"]
