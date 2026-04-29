@@ -3,8 +3,8 @@ services:
     image: ghcr.io/homarr-labs/homarr:latest
     container_name: homarr
     restart: unless-stopped
-    env_file:
-      - ./.env
+    environment:
+      SECRET_ENCRYPTION_KEY: c6a72b874723f4998f0bd1eb1be48ee4bcedab8e75776d15c546fd98f34c4432
     ports:
       - "127.0.0.1:7575:7575"
     volumes:

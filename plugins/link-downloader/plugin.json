@@ -2,14 +2,13 @@
   "id": "link-downloader",
   "name": "Media Downloader",
   "version": "1.0.9",
+  "runtime_type": "docker",
   "network": {
-    "internal_port": 8160
+    "internal_port": 8160,
+    "public_port": 8460
   },
   "entrypoint": {
     "type": "web",
     "path": "/"
-  },
-  "backend": {
-    "type": "docker"
   }
 }
