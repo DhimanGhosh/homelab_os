@@ -37,7 +37,7 @@ Homelab OS turns a Raspberry Pi into a personal cloud and application platform. 
           │   Build · Heal · Logs)    │
           └──────┬──────────┬─────────┘
                  │          │
-         ┌───────▼──┐  ┌────▼──────────────┐
+         ┌───────▼──┐  ┌────▼───────────────┐
          │  Caddy   │  │  Plugin Runtime    │
          │ Reverse  │  │  (Docker Compose   │
          │  Proxy   │  │   per plugin)      │
