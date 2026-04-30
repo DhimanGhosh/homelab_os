@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Downloader</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <div id="appName" class="brand">Downloader</div>
+          <div id="appVersion" class="sub">v1.0.9 • 8460 • social + file links + MP3 conversion</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:18px">
+        <h2>Save locations</h2>
+        <div class="hint">Server-side temporary downloads are stored in the container at:</div>
+        <div id="serverRoot" class="mono" style="margin-top:8px;font-size:28px;font-weight:800">/data/downloads</div>
+        <div class="hint" style="margin-top:10px">On your Raspberry Pi host, this maps to:</div>
+        <div id="hostRoot" class="mono" style="margin-top:8px">/mnt/nas/homelab/runtime/link-downloader/data/downloads</div>
+        <div id="deviceHint" class="hint" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h2>Save elsewhere on Pi/NAS</h2>
+        <div class="hint">Use the inline rename + destination fields on each saved file card to copy or move files into
+          Pi/NAS paths like:</div>
+        <div id="externalRoot" class="mono" style="margin-top:10px">/mnt/nas/media/music</div>
+        <div id="allowedRoots" class="hint" style="margin-top:10px"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="card">
+        <div class="row spread">
+          <div>
+            <div class="row" style="justify-content:space-between">
+              <h1 id="pageTitle">Media Downloader</h1>
+              <span id="pageVersion" class="pill">v1.0.9</span>
+            </div>
+            <div class="muted">Download media from supported links, upload your own files for MP3 conversion, then
+              rename and save files on this device or another Raspberry Pi/NAS path.</div>
+          </div>
+          <div class="pill"><span id="toolStatus">Checking tools…</span></div>
+        </div>
+
+        <div class="stats" style="margin-top:16px">
+          <div class="stat">
+            <div class="muted">Completed Jobs</div>
+            <div id="dlCount" style="font-size:28px;font-weight:800">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Saved Files</div>
+            <div id="savedCount" style="font-size:28px;font-weight:800">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Audio Files</div>
+            <div id="audioCount" style="font-size:28px;font-weight:800">0</div>
+          </div>
+          <div class="stat">
+            <div class="muted">Actions</div>
+            <div class="hint" id="actionLegend">Open in browser • Download to device • Copy/Move to Pi/NAS</div>
+          </div>
+        </div>
+
+        <div class="explainer" style="margin-top:14px">
+          <div class="helper">
+            <div class="kicker">Open</div>
+            <div class="hint">Opens or streams the file from the Raspberry Pi server in your browser when possible.</div>
+          </div>
+          <div class="helper">
+            <div class="kicker">Download to this device</div>
+            <div class="hint">Downloads the file to the current phone, tablet, or computer.</div>
+          </div>
+          <div class="helper">
+            <div class="kicker">Copy/Move there</div>
+            <div class="hint">Saves the file somewhere else on the Raspberry Pi or NAS, with optional rename.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="tabs" style="margin-bottom:16px">
+          <button class="tab active" data-panel="downloadPanel">Download from URL</button>
+          <button class="tab" data-panel="uploadPanel">Upload + Convert</button>
+          <button class="tab" data-panel="convertPanel">Convert saved video to MP3</button>
+        </div>
+
+        <!-- ── Download from URL ────────────────────────────────────────── -->
+        <div id="downloadPanel" class="panel">
+          <div class="grid2">
+            <div>
+              <label class="muted">Paste URL</label>
+              <input id="urlInput" placeholder="https://youtube.com/... or https://instagram.com/... or direct file link" />
+              <div class="row" style="margin-top:12px">
+                <select id="modeSelect" class="grow">
+                  <option value="video">Download video</option>
+                  <option value="audio">Extract audio as MP3</option>
+                </select>
+                <button id="startBtn" class="btn primary">Start download</button>
+              </div>
+              <div class="hint" style="margin-top:10px">The downloaded file first lands on the Pi server, then you can
+                rename it for device download, or copy/move it into another Pi/NAS location.</div>
+              <div class="hint" style="margin-top:8px">Refresh reloads jobs, saved files, and counters from the backend.</div>
+            </div>
+            <div>
+              <div class="section-title">
+                <h3>Recent jobs</h3>
+                <div class="row">
+                  <span class="last-refresh" id="lastRefresh">Last refreshed: never</span>
+                  <button id="refreshBtn" class="btn small ghost">Refresh</button>
+                  <button id="clearJobsBtn" class="btn small ghost" title="Clear completed jobs and temporary saved files from this app">Clear clutter</button>
+                </div>
+              </div>
+              <div id="jobs" class="jobs"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Upload + Convert ─────────────────────────────────────────── -->
+        <div id="uploadPanel" class="panel" hidden>
+          <div class="grid2">
+            <div>
+              <label class="muted">Upload a file from this device</label>
+              <input id="uploadFile" type="file"
+                accept="video/*,audio/*,.mp4,.mkv,.mov,.avi,.webm,.m4v,.wav,.flac,.aac,.m4a,.ogg" />
+              <div class="small-grid" style="margin-top:12px">
+                <input id="uploadNewName" placeholder="Optional new MP3 name" />
+                <select id="uploadConvertTo">
+                  <option value="mp3">Convert to MP3</option>
+                </select>
+                <button id="uploadConvertBtn" class="btn primary">Upload + convert</button>
+              </div>
+              <div class="hint" style="margin-top:10px">After conversion, use the saved file card to rename it again,
+                download it to this device, or copy/move it to <span class="mono">/mnt/nas/media/music</span>.</div>
+            </div>
+            <div class="helper">
+              <div class="kicker">Mobile friendly flow</div>
+              <div class="hint">On phones and tablets, the upload section stacks vertically and action buttons wrap so
+                all controls remain reachable.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Convert saved video ──────────────────────────────────────── -->
+        <div id="convertPanel" class="panel" hidden>
+          <div class="section-title">
+            <h3>Convert a saved video file to MP3</h3>
+          </div>
+          <div class="small-grid">
+            <select id="convertSelect"></select>
+            <input id="convertNewName" placeholder="Optional new MP3 name" />
+            <button id="convertBtn" class="btn primary">Convert</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h2>Saved files</h2>
+          <span class="muted">Open in browser, download to this device, or rename + copy/move elsewhere on the Pi/NAS.</span>
+        </div>
+        <div id="files" class="files"></div>
+      </section>
+    </main>
+  </div>
+
+  <datalist id="destinations"></datalist>
+  <script src="/static/js/script.js"></script>
+</body>
+</html>
