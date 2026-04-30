@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from app.config import APP_NAME, APP_VERSION, ARTIST_IMAGES_DIR, MUSIC_ROOT, SUPPORTED_EXTENSIONS
 from app.media import track_metadata
@@ -34,7 +35,10 @@ def scan_tracks() -> list[dict[str, Any]]:
                 "duration":   meta["duration"],
                 "folder":     "" if str(Path(rel).parent) == "." else str(Path(rel).parent),
                 "filename":   path.name,
-                "stream_url": "/api/stream/" + rel,
+                # URL-encode each path segment so songs with spaces, brackets,
+                # Hindi / Unicode characters, or other special chars in their
+                # filename stream correctly through Caddy and the browser.
+                "stream_url": "/api/stream/" + quote(rel, safe="/"),
                 "art_url":    meta["art_url"],
             })
     return tracks

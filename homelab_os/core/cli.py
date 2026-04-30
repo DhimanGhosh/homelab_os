@@ -14,6 +14,7 @@ from homelab_os.core.services.network_stack import NetworkStackService
 from homelab_os.core.services.reverse_proxy import ReverseProxyService
 from homelab_os.core.services.systemd_service import CoreServiceManager
 from homelab_os.core.services.recovery import RecoveryService
+from homelab_os.core.services.watchdog import WatchdogService
 from homelab_os.core.plugin_manager.registry import PluginRegistry
 from homelab_os.core.services.app_catalog import load_app_catalog
 
@@ -34,12 +35,31 @@ def _plugin_version(source_dir: Path) -> str:
     return version
 
 
+def _install_watchdog(settings, echo_fn=None) -> None:
+    """Install or reinstall the watchdog service. Called automatically by
+    bootstrap-host and self-heal so no manual steps are ever required."""
+    echo = echo_fn or typer.echo
+    try:
+        watchdog = WatchdogService(settings)
+        watchdog.install_and_enable()
+        echo(f'Watchdog service installed and enabled ({watchdog.SERVICE_NAME})')
+    except Exception as exc:  # noqa: BLE001
+        echo(f'[watchdog] Warning: could not install watchdog service: {exc}')
+
+
 @app.command('bootstrap-host')
 def bootstrap_host(env_file: str = '.env') -> None:
     settings = load_settings(env_file)
     ensure_runtime_dirs(settings)
+
+    # 1 — Reconcile Caddy routes
     stack = NetworkStackService(settings)
     applied = stack.reconcile_routes(include_core=True)
+
+    # 2 — Automatically install/update the watchdog service so CC + Pi-hole
+    #     are always monitored and auto-restarted without any manual setup.
+    _install_watchdog(settings)
+
     typer.echo('Host bootstrap completed.')
     typer.echo('')
     typer.echo('Resolved settings:')
@@ -52,10 +72,29 @@ def bootstrap_host(env_file: str = '.env') -> None:
     typer.echo(f'  Build dir          : {settings.build_dir}')
     typer.echo(f'  Plugins dir        : {settings.plugins_dir}')
     typer.echo(f'  Runtime dir        : {settings.runtime_dir}')
+    typer.echo(f'  Pi-hole password   : {"(set)" if settings.pihole_password else "(not set)"}')
     typer.echo('')
     typer.echo(f'Rebound routes      : {len(applied)}')
     for plugin_id, public_url in applied.items():
         typer.echo(f'  {plugin_id:<18} -> {public_url}')
+
+
+@app.command('install-watchdog')
+def install_watchdog(env_file: str = '.env') -> None:
+    """Install (or reinstall) the homelab-watchdog systemd service.
+
+    This is called automatically by bootstrap-host and self-heal, so you only
+    need to run this manually if you want to refresh the watchdog script after
+    changing settings (e.g. LAN_IP, runtime path).
+    """
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+    watchdog = WatchdogService(settings)
+    watchdog.install_and_enable()
+    typer.echo(f'Watchdog installed and started: {watchdog.SERVICE_NAME}')
+    typer.echo(f'  Script      : {watchdog.SCRIPT_PATH}')
+    typer.echo(f'  Status      : {watchdog.status()}')
+    typer.echo(f'  Logs        : {settings.logs_dir}/watchdog.log')
 
 
 @app.command('show-settings')
@@ -64,6 +103,7 @@ def show_settings(env_file: str = '.env') -> None:
     ensure_runtime_dirs(settings)
     for key, value in asdict(settings).items():
         typer.echo(f'{key}: {value}')
+
 
 @app.command('reconcile-routes')
 def reconcile_routes(env_file: str = '.env') -> None:
@@ -286,6 +326,11 @@ def self_heal(env_file: str = '.env') -> None:
     try:
         progress(1, 'Queued self-heal job')
         summary = service.self_heal()
+
+        # Always ensure the watchdog is installed/running after a self-heal
+        # so that CC and Pi-hole stay up even after future failures.
+        _install_watchdog(settings, echo_fn=log)
+
         job_store.update_job(job['job_id'], status='completed', progress=100, result=summary)
         typer.echo(f"Job ID: {job['job_id']}")
         typer.echo(f"Docker root: {summary['docker_root']}")
@@ -311,6 +356,7 @@ def self_heal(env_file: str = '.env') -> None:
         logger.append_job_log(job['job_id'], f'Self-heal failed: {exc}')
         job_store.update_job(job['job_id'], status='failed', progress=100, error=str(exc))
         raise
+
 
 if __name__ == '__main__':
     app()

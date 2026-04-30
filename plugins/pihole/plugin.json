@@ -2,14 +2,13 @@
   "id": "pihole",
   "name": "Pi-hole",
   "version": "1.0.0",
+  "runtime_type": "docker",
   "network": {
-    "internal_port": 8080
+    "internal_port": 8080,
+    "public_port": 8447
   },
   "entrypoint": {
     "type": "web",
     "path": "/admin/"
-  },
-  "backend": {
-    "type": "docker"
   }
 }

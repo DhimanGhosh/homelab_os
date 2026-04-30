@@ -4,13 +4,22 @@ services:
     container_name: pihole
     environment:
       TZ: ${TZ:-Asia/Kolkata}
+      # Pi-hole v5 password (kept for compatibility with older image tags)
       WEBPASSWORD: ${PIHOLE_PASSWORD:-admin}
+      # Pi-hole v6 password — used by pihole/pihole:latest
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD:-admin}
       FTLCONF_dns_upstreams: ${PIHOLE_UPSTREAMS:-1.1.1.1;1.0.0.1}
       FTLCONF_dns_listeningMode: all
       DNSMASQ_LISTENING: all
     ports:
-      - "53:53/tcp"
-      - "53:53/udp"
+      # DNS bound to LAN + Tailscale IPs only.
+      # Avoids conflict with systemd-resolved which holds 127.0.0.53:53
+      # on Raspberry Pi OS. Values come from your .env file automatically.
+      - "${LAN_IP:-192.168.88.10}:53:53/tcp"
+      - "${LAN_IP:-192.168.88.10}:53:53/udp"
+      - "${TAILSCALE_IP:-100.66.127.27}:53:53/tcp"
+      - "${TAILSCALE_IP:-100.66.127.27}:53:53/udp"
+      # Web admin UI — proxied through Caddy on public port 8447
       - "127.0.0.1:8080:80"
     volumes:
       - /mnt/nas/homelab/runtime/pihole/data/etc-pihole:/etc/pihole

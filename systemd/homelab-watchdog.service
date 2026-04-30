@@ -1,0 +1,26 @@
+[Unit]
+Description=Homelab OS Watchdog — auto-recovery for Control Center and Pi-hole
+Documentation=https://github.com/your-repo/homelab-os
+# Start after Docker and networking are up
+After=network-online.target docker.service homelab-os-core.service
+Wants=network-online.target docker.service
+# Do not hard-depend on homelab-os-core so the watchdog starts even if CC is down
+PartOf=
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/homelab-watchdog
+Restart=always
+RestartSec=10s
+# Give the watchdog process access to systemctl so it can restart services
+# (requires the user to have sudo rights for systemctl restart homelab-os-core)
+User=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=homelab-watchdog
+
+# Ensure the log directory exists before starting
+ExecStartPre=/bin/mkdir -p /mnt/nas/homelab/logs
+
+[Install]
+WantedBy=multi-user.target

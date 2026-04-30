@@ -28,6 +28,8 @@ class Settings:
     caddy_disabled_dir: Path
     tailscale_cert_dir: Path
     app_catalog_file: Path
+    # Pi-hole admin password — enforced on every self-heal and bootstrap
+    pihole_password: str
 
     @property
     def runtime_installed_plugins_dir(self) -> Path:
@@ -89,6 +91,7 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         caddy_disabled_dir=Path(os.getenv("CADDY_DISABLED_DIR", "/etc/caddy/apps.disabled")),
         tailscale_cert_dir=Path(os.getenv("TAILSCALE_CERT_DIR", "/etc/caddy/certs/tailscale")),
         app_catalog_file=root / os.getenv("APP_CATALOG_FILE", "config/app_catalog.json"),
+        pihole_password=os.getenv("PIHOLE_PASSWORD", "admin"),
     )
 
 

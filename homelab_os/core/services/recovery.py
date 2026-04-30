@@ -59,7 +59,7 @@ class RecoveryService:
 
         self.progress(12, "Checking Docker health")
         if self._docker_needs_repair():
-            self.progress(18, "Docker corruption detected. Starting Docker repair")
+            self.progress(18, "Docker corruption detected — starting repair")
             repaired = self._repair_docker_root()
             summary["docker_repaired"] = repaired
             if repaired:
@@ -83,10 +83,7 @@ class RecoveryService:
                     timeout=self.plugin_start_timeout_seconds,
                 )
                 summary["started_plugins"].append(
-                    {
-                        "plugin_id": plugin_id,
-                        "public_url": result.get("public_url"),
-                    }
+                    {"plugin_id": plugin_id, "public_url": result.get("public_url")}
                 )
                 self.log(f"Recovered plugin {plugin_id}")
             except subprocess.TimeoutExpired as exc:
@@ -105,10 +102,7 @@ class RecoveryService:
                             timeout=self.plugin_start_timeout_seconds,
                         )
                         summary["started_plugins"].append(
-                            {
-                                "plugin_id": plugin_id,
-                                "public_url": result.get("public_url"),
-                            }
+                            {"plugin_id": plugin_id, "public_url": result.get("public_url")}
                         )
                         self.log(f"Recovered plugin {plugin_id} on retry")
                         continue
@@ -147,17 +141,14 @@ class RecoveryService:
             parts.append(str(exc))
         return " | ".join(parts)
 
-    def _run_cmd(
-        self,
-        cmd: list[str],
-        *,
-        timeout: int = 60,
-        check: bool = False,
-    ) -> subprocess.CompletedProcess:
+    def _run_cmd(self, cmd: list[str], *, timeout: int = 60, check: bool = False) -> subprocess.CompletedProcess:
         self.log(f"$ {' '.join(cmd)}")
         return subprocess.run(cmd, capture_output=True, text=True, check=check, timeout=timeout)
 
     def _ensure_docker_root(self) -> bool:
+        """Ensure /etc/docker/daemon.json always points docker data-root to
+        settings.docker_root_dir (default: /mnt/nas/homelab/docker).
+        Returns True if the file was changed and Docker was restarted."""
         wanted = str(self.settings.docker_root_dir)
         generated = Path("/mnt/nas/homelab/generated/docker-daemon.generated.json")
         generated.parent.mkdir(parents=True, exist_ok=True)
@@ -182,31 +173,58 @@ class RecoveryService:
         return True
 
     def _docker_needs_repair(self) -> bool:
+        """Return True ONLY when Docker is genuinely broken.
+
+        We deliberately do NOT scan journalctl for build-time phrases like
+        "failed to solve" — those appear in completely normal Docker build
+        output and caused catastrophic false-positives that wiped all stored
+        images. Repair is only triggered when the daemon itself is unresponsive
+        or the storage layer reports a hard error.
+        """
         docker_info = self._run_cmd(["docker", "info"], timeout=45)
         if docker_info.returncode != 0:
-            self.log("docker info failed; Docker repair required")
+            self.log("docker info failed — Docker repair required")
             return True
 
         images = self._run_cmd(["docker", "images"], timeout=45)
         if images.returncode != 0:
-            self.log("docker images failed; Docker repair required")
+            self.log("docker images failed — Docker repair required")
             return True
 
-        journal = self._run_cmd(["sudo", "journalctl", "-u", "docker", "-n", "250", "--no-pager"], timeout=45)
-        text = f"{images.stdout}\n{images.stderr}\n{journal.stdout}\n{journal.stderr}".lower()
-        signatures = [
+        # Only match genuine storage-layer corruption in image listing output.
+        # Never include build-time strings (e.g. "failed to solve").
+        storage_signatures = [
             "layer does not exist",
             "failed to register layer",
             "failed to load container mount",
             "mount does not exist",
             "not restoring image",
-            "failed to solve",
         ]
-        return any(sig in text for sig in signatures)
+        combined = f"{images.stdout}\n{images.stderr}".lower()
+        if any(sig in combined for sig in storage_signatures):
+            self.log("Docker storage corruption detected in image output")
+            return True
+
+        return False
 
     def _repair_docker_root(self) -> bool:
+        """Stop Docker, wipe its storage directories, and restart.
+
+        Safety guard: if any containers are currently running the wipe is
+        skipped — Docker is operational enough and destroying it would take
+        down live services.
+        """
         docker_root = Path(self.settings.docker_root_dir)
         self.log(f"Repairing Docker root at {docker_root}")
+
+        ps = self._run_cmd(["docker", "ps", "-q"], timeout=30)
+        if ps.returncode == 0 and ps.stdout.strip():
+            running = ps.stdout.strip().splitlines()
+            self.log(
+                f"Aborting Docker repair — {len(running)} running container(s) found. "
+                "Docker is operational; wipe skipped to protect live services."
+            )
+            return False
 
         metadata_backup = docker_root.parent / "docker_recovery_metadata.json"
         metadata = {
@@ -282,7 +300,12 @@ class RecoveryService:
             message += "\n" + str(exc.stdout)
         message = message.lower()
 
-        if any(sig in message for sig in ["layer does not exist", "unable to get image", "failed to register layer", "mount does not exist"]):
+        if any(sig in message for sig in [
+            "layer does not exist",
+            "unable to get image",
+            "failed to register layer",
+            "mount does not exist",
+        ]):
             self.log(f"Detected Docker/image corruption while recovering {plugin_id}; repairing Docker")
             return self._repair_docker_root()
 
@@ -296,14 +319,22 @@ class RecoveryService:
         local_admin_url = "http://127.0.0.1:8080/admin/"
         result: dict[str, Any] = {"ok": False, "status_code": None, "url": local_admin_url}
 
-        password = getattr(self.settings, "pihole_password", None) or os.getenv("PIHOLE_PASSWORD")
-        if password:
-            subprocess.run(
-                ["docker", "exec", "pihole", "pihole", "setpassword", password],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+        # Enforce the configured password on every heal.
+        # Supports Pi-hole v5 (pihole setpassword) and v6 (pihole-FTL --config).
+        password = (
+            getattr(self.settings, "pihole_password", None)
+            or os.getenv("PIHOLE_PASSWORD")
+            or "admin"
+        )
+        subprocess.run(
+            ["docker", "exec", "pihole", "pihole", "setpassword", password],
+            check=False, capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["docker", "exec", "pihole", "pihole-FTL", "--config",
+             f"webserver.api.password={password}"],
+            check=False, capture_output=True, text=True,
+        )
 
         try:
             req = urllib.request.Request(local_admin_url, method="GET")

@@ -72,12 +72,25 @@ class ReverseProxyService:
         key = self.settings.tailscale_cert_dir / f'{self.settings.tailscale_fqdn}.key'
         return f'    tls {cert} {key}\n'
 
+    # Plugins that stream binary data (audio, large file downloads).
+    # Caddy buffers responses by default — flush_interval -1 disables that so
+    # bytes reach the browser as soon as the upstream produces them.
+    _STREAMING_PLUGINS = frozenset({'music-player', 'link-downloader'})
+
     def generate_snippet(self, plugin_id: str, internal_port: int) -> str:
         public_port = self.public_port_for_plugin(plugin_id)
+        if plugin_id in self._STREAMING_PLUGINS:
+            proxy_block = (
+                f'    reverse_proxy 127.0.0.1:{internal_port} {{\n'
+                f'        flush_interval -1\n'
+                f'    }}\n'
+            )
+        else:
+            proxy_block = f'    reverse_proxy 127.0.0.1:{internal_port}\n'
         return (
             f'https://{self.settings.tailscale_fqdn}:{public_port} {{\n'
             f'{self._snippet_tls_block()}'
-            f'    reverse_proxy 127.0.0.1:{internal_port}\n'
+            f'{proxy_block}'
             f'}}\n'
         )
 
