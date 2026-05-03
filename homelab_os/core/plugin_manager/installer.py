@@ -86,16 +86,32 @@ class PluginInstaller:
             reverse=True,
         )
 
+    def _path_exists_without_raising(self, path: Path) -> bool:
+        try:
+            return path.exists()
+        except OSError:
+            return False
+
+    def _path_is_dir_without_raising(self, path: Path) -> bool:
+        try:
+            return path.is_dir()
+        except OSError:
+            return False
+
     def _remove_plugin_data_paths(self, plugin_id: str, plugin_dir: Path) -> None:
         for path in self._collect_plugin_data_paths(plugin_id, plugin_dir):
-            if not path.exists():
+            # pathlib.Path.exists() can raise OSError on a stale/corrupted NAS
+            # mount. Cleanup must not abort a fresh plugin install because of an
+            # unrelated broken runtime path; the actual storage problem should be
+            # repaired separately on the host.
+            if not self._path_exists_without_raising(path):
                 continue
-            if path.is_dir():
+            if self._path_is_dir_without_raising(path):
                 shutil.rmtree(path, ignore_errors=True)
             else:
                 try:
                     path.unlink(missing_ok=True)
-                except Exception:
+                except OSError:
                     pass
 
     def _stop_plugin_containers(self, plugin_id: str, plugin_dir: Path) -> None:
@@ -146,11 +162,12 @@ class PluginInstaller:
                 pass
             # Data directory is intentionally left untouched
         else:
-            # ── ORPHAN CLEANUP: nothing to preserve ─────────────────���────────
+            # ── ORPHAN CLEANUP: nothing to preserve ───────────────────────────
             self._stop_plugin_containers(plugin_id, plugin_dir)
-            if plugin_dir.exists():
+            had_code_dir = self._path_exists_without_raising(plugin_dir)
+            if had_code_dir:
                 shutil.rmtree(plugin_dir, ignore_errors=True)
-            self._remove_plugin_data_paths(plugin_id, plugin_dir)
+                self._remove_plugin_data_paths(plugin_id, plugin_dir)
             self.state_store.remove_plugin_state(plugin_id)
             try:
                 self.proxy.remove_plugin_route(plugin_id)
@@ -176,7 +193,7 @@ class PluginInstaller:
             target_dir = self.installed_plugins_dir / plugin_id
 
             self._cleanup_existing_install(plugin_id)
-            if target_dir.exists():
+            if self._path_exists_without_raising(target_dir):
                 shutil.rmtree(target_dir, ignore_errors=True)
             shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
 

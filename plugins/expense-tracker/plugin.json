@@ -1,0 +1,14 @@
+{
+  "id": "expense-tracker",
+  "name": "Expense Tracker",
+  "version": "1.0.2",
+  "runtime_type": "docker",
+  "network": {
+    "internal_port": 8161,
+    "public_port": 8461
+  },
+  "entrypoint": {
+    "type": "web",
+    "path": "/"
+  }
+}

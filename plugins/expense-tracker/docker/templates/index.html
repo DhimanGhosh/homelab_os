@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_name }}</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── NAV ──────────────────────────────────────────────────────────────── -->
+<header class="top">
+  <div class="top-inner">
+    <h1>💰 <span id="appName">{{ app_name }}</span></h1>
+    <button class="hamburger" id="hamburger" aria-label="menu">☰</button>
+  </div>
+  <nav id="nav">
+    <a href="#dashboard"    class="nav-link active" data-view="dashboard">Dashboard</a>
+    <a href="#transactions" class="nav-link"         data-view="transactions">Transactions</a>
+    <a href="#budgets"      class="nav-link"         data-view="budgets">Budgets</a>
+    <a href="#analytics"    class="nav-link"         data-view="analytics">Analytics</a>
+    <a href="#recurring"    class="nav-link"         data-view="recurring">Recurring</a>
+  </nav>
+</header>
+
+<!-- ── VIEWS ────────────────────────────────────────────────────────────── -->
+<main class="wrap">
+
+  <!-- DASHBOARD -->
+  <section id="view-dashboard" class="view active">
+    <h2>Dashboard</h2>
+
+    <!-- Summary cards -->
+    <div class="cards" id="summaryCards">
+      <div class="card"><div class="card-label">Monthly Income</div><div class="card-val" id="dashIncome">—</div></div>
+      <div class="card"><div class="card-label">Total Expenses</div><div class="card-val expense" id="dashExpenses">—</div></div>
+      <div class="card"><div class="card-label">Remaining Budget</div><div class="card-val" id="dashRemaining">—</div></div>
+      <div class="card"><div class="card-label">Savings</div><div class="card-val" id="dashSavings">—</div></div>
+    </div>
+
+    <!-- Budget bar -->
+    <div class="section-box" id="budgetBar">
+      <div class="section-title">Budget Usage</div>
+      <div class="bar-track"><div class="bar-fill" id="budgetFill"></div></div>
+      <p id="budgetBarLabel"></p>
+    </div>
+
+    <!-- Quick add -->
+    <div class="section-box">
+      <div class="section-title">Quick Add Expense</div>
+      <form id="quickForm" class="quick-form">
+        <input   type="number" name="amount"      placeholder="Amount ₹" step="0.01" min="0.01" required>
+        <select  name="category" required>
+          <option value="">Category…</option>
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+        <input   type="text"   name="description" placeholder="Description">
+        <select  name="cardholder">
+          {% for ch in cardholders %}<option value="{{ ch }}">{{ ch }}</option>{% endfor %}
+        </select>
+        <input   type="date"   name="date"        id="quickDate">
+        <button  type="submit" class="btn btn-primary">+ Add</button>
+      </form>
+    </div>
+
+    <!-- Recent + chart row -->
+    <div class="two-col">
+      <div class="section-box">
+        <div class="section-title">Recent Expenses</div>
+        <ul id="recentList" class="item-list"></ul>
+      </div>
+      <div class="section-box">
+        <div class="section-title">Spending by Category</div>
+        <canvas id="pieChart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRANSACTIONS -->
+  <section id="view-transactions" class="view">
+    <div class="view-header">
+      <h2>Transactions</h2>
+      <button class="btn btn-primary" id="openAddModal">+ Add</button>
+    </div>
+
+    <div class="filter-row">
+      <input  type="month"  id="filterMonth" class="filter-input">
+      <select id="filterCategory" class="filter-input">
+        <option value="">All Categories</option>
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <select id="filterCardholder" class="filter-input">
+        <option value="">All Cardholders</option>
+        {% for ch in cardholders %}<option value="{{ ch }}">{{ ch }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="table-wrap">
+      <table id="txTable">
+        <thead><tr>
+          <th>Date</th><th>Amount</th><th>Category</th>
+          <th>Description</th><th>Cardholder</th><th></th>
+        </tr></thead>
+        <tbody id="txBody"></tbody>
+      </table>
+    </div>
+    <p id="txEmpty" class="empty" style="display:none">No transactions found.</p>
+  </section>
+
+  <!-- BUDGETS -->
+  <section id="view-budgets" class="view">
+    <h2>Budget Settings</h2>
+    <div class="two-col">
+      <div class="section-box">
+        <div class="section-title">Set Monthly Budget</div>
+        <form id="budgetForm" class="budget-form">
+          <label>Monthly Income (₹)
+            <input type="number" name="income" id="bIncome" step="0.01" min="0" placeholder="0">
+          </label>
+          <label>Expense Limit (₹)
+            <input type="number" name="expense_limit" id="bLimit" step="0.01" min="0" placeholder="0">
+          </label>
+          <label>Emergency Fund Target (₹)
+            <input type="number" name="emergency_fund" id="bEmFund" step="0.01" min="0" placeholder="0">
+          </label>
+          <label>Investment Goal (₹)
+            <input type="number" name="investment_goal" id="bCost" step="0.01" min="0" placeholder="0">
+          </label>
+          <button type="submit" class="btn btn-primary">Save Budget</button>
+        </form>
+      </div>
+      <div class="section-box">
+        <div class="section-title">This Month's Status</div>
+        <dl id="budgetStatus" class="status-dl"></dl>
+        <div id="budgetAlert" class="alert-box" style="display:none">
+          ⚠️ You've used ≥ 80% of your budget!
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ANALYTICS -->
+  <section id="view-analytics" class="view">
+    <h2>Analytics</h2>
+    <div class="two-col">
+      <div class="section-box">
+        <div class="section-title">Monthly Spending Trend</div>
+        <canvas id="trendChart"></canvas>
+      </div>
+      <div class="section-box">
+        <div class="section-title">Category Breakdown</div>
+        <canvas id="barChart"></canvas>
+      </div>
+    </div>
+    <div class="section-box">
+      <div class="section-title">Category Details</div>
+      <ul id="catBreakdown" class="item-list"></ul>
+    </div>
+  </section>
+
+  <!-- RECURRING -->
+  <section id="view-recurring" class="view">
+    <div class="view-header">
+      <h2>Recurring Expenses</h2>
+      <button class="btn btn-primary" id="openRecurringModal">+ Add Template</button>
+    </div>
+    <div id="recurringList"></div>
+    <p id="recurringEmpty" class="empty" style="display:none">No recurring templates yet.</p>
+  </section>
+
+</main>
+
+<!-- ── MODALS ────────────────────────────────────────────────────────────── -->
+
+<!-- Add/Edit Expense Modal -->
+<div id="expenseModal" class="modal" role="dialog" aria-modal="true" aria-label="Expense">
+  <div class="modal-box">
+    <button class="modal-close" data-close="expenseModal">✕</button>
+    <h3 id="expenseModalTitle">Add Expense</h3>
+    <form id="expenseForm" class="expense-form">
+      <input type="hidden" name="id">
+      <label>Date <input type="date" name="date" required></label>
+      <label>Amount (₹) <input type="number" name="amount" step="0.01" min="0.01" required></label>
+      <label>Type
+        <select name="type">
+          <option value="expense">Expense</option>
+          <option value="income">Income / Credit</option>
+        </select>
+      </label>
+      <label>Category
+        <select name="category" required>
+          <option value="">Select…</option>
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Description <input type="text" name="description"></label>
+      <label>Cardholder
+        <select name="cardholder">
+          {% for ch in cardholders %}<option value="{{ ch }}">{{ ch }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary" data-close="expenseModal">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add/Edit Recurring Template Modal -->
+<div id="recurringModal" class="modal" role="dialog" aria-modal="true" aria-label="Recurring">
+  <div class="modal-box">
+    <button class="modal-close" data-close="recurringModal">✕</button>
+    <h3 id="recurringModalTitle">Add Recurring Template</h3>
+    <form id="recurringForm" class="expense-form">
+      <input type="hidden" name="id">
+      <label>Description <input type="text" name="description" required></label>
+      <label>Amount (₹)  <input type="number" name="amount" step="0.01" min="0.01" required></label>
+      <label>Category
+        <select name="category" required>
+          <option value="">Select…</option>
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Cardholder
+        <select name="cardholder">
+          {% for ch in cardholders %}<option value="{{ ch }}">{{ ch }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Frequency
+        <select name="frequency">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly" selected>Monthly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+      </label>
+      <label>First Due Date <input type="date" name="next_due" required></label>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary" data-close="recurringModal">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="/static/js/script.js"></script>
+</body>
+</html>

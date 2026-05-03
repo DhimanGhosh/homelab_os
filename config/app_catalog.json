@@ -18,6 +18,12 @@
       "entrypoint_path": "/",
       "_comment": "Personal dictionary app powered by a local LLM, not to be confused with the built-in dictionary feature in control center which is more of a quick reference tool"
     },
+    "expense-tracker": {
+      "name": "Expense Tracker",
+      "public_port": 8461,
+      "entrypoint_path": "/",
+      "_comment": "Personal finance and expense tracking plugin exposed through Caddy/Tailscale on 8461."
+    },
     "files": {
       "name": "Files",
       "public_port": 8449,
