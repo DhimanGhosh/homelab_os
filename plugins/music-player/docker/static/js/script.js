@@ -26,6 +26,8 @@ const S = {
   playStats: { songs: {}, albums: {}, artists: {} },
   lastCountedTrackId: null,
   dragTouch: null,
+  preShuffleQueue: null,
+  preShuffleIndex: -1,
 };
 
 function escapeHtml(text = '') {
@@ -225,6 +227,8 @@ function setQueue(trackIds, startIndex = 0, autoplay = true, contextLabel = 'Loc
     updateQueueOrigin(ids, contextLabel, options.originType || S.context?.type || 'tracks');
   }
   S.autoQueueMode = !!options.autoQueueMode;
+  // Clear shuffle memory when a brand-new context is loaded
+  S.preShuffleQueue = null; S.preShuffleIndex = -1;
   S.queue = buildTrackList(ids);
   S.index = Math.max(0, Math.min(startIndex, Math.max(0, S.queue.length - 1)));
   $('nowPlayingContext').textContent = contextLabel;
@@ -483,6 +487,7 @@ function toggleNowPlaying(open) {
   const shouldOpen = open ?? overlay.classList.contains('hidden');
   overlay.classList.toggle('hidden', !shouldOpen);
   if (shouldOpen) {
+    history.pushState({ nowPlaying: true, view: S.view, context: S.context || null }, '', '#nowplaying');
     const panel = $('nowPlayingPanel');
     if (panel) {
       panel.scrollTop = 0;
@@ -492,6 +497,9 @@ function toggleNowPlaying(open) {
     }
     toggleQueueSheet(true);
     requestAnimationFrame(updateNowPlayingScrollProgress);
+  } else {
+    // Sync browser history when overlay is closed programmatically
+    if (location.hash === '#nowplaying') history.back();
   }
 }
 
@@ -681,7 +689,7 @@ function renderTrackCollection(title, subtitle, trackIds, context) {
 }
 
 function renderPlaylistsView() {
-  if (S.context?.type === 'playlist') {
+  if (S.context?.type === 'playlist' || S.context?.type === 'playlists') {
     const playlist = S.lib.playlists.find((item) => item.name === S.context.value);
     renderTrackCollection(playlist?.name || 'Playlist', `${playlist?.count || 0} track(s)`, playlist?.tracks || [], { type: 'playlists', value: playlist?.name || S.context.value });
     return;
@@ -728,7 +736,10 @@ function navigate(view, context = null) {
   S.view = view;
   S.context = context;
   renderView();
-  if (changed) requestAnimationFrame(() => { const main = document.querySelector('.main-area'); if (main) main.scrollTop = 0; });
+  if (changed) {
+    requestAnimationFrame(() => { const main = document.querySelector('.main-area'); if (main) main.scrollTop = 0; });
+    history.pushState({ view, context: context || null }, '', encodeRoute(view, context));
+  }
   closeSidebar();
 }
 
@@ -1016,35 +1027,51 @@ function reorderQueue(sourceId, targetId) {
 }
 
 function enableTouchReorder() {
+  // v9.0.0: Rewritten to use document-level non-passive touchmove so we can
+  // call preventDefault() and stop the page from scrolling during a drag.
+  // Drag is only activated via the handle icon, not the whole row.
+  const list = $('queueList');
   let active = null;
-  $('queueList').querySelectorAll('.queue-item').forEach((item) => {
-    item.addEventListener('touchstart', (event) => {
-      const handle = event.target.closest('.drag-handle');
-      if (!handle) return;
+
+  function onTouchMove(event) {
+    if (!active) return;
+    event.preventDefault(); // stops page scroll while dragging
+    const touch = event.touches[0];
+    const dy = touch.clientY - active.startY;
+    active.node.style.transform = `translateY(${dy}px) scale(1.02)`;
+    // Temporarily hide the dragged element so elementFromPoint finds what's beneath
+    active.node.style.pointerEvents = 'none';
+    const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.queue-item');
+    active.node.style.pointerEvents = '';
+    list.querySelectorAll('.queue-item').forEach((n) => n.classList.remove('drag-over'));
+    active.targetNode = (elemBelow && elemBelow !== active.node) ? elemBelow : null;
+    if (active.targetNode) active.targetNode.classList.add('drag-over');
+  }
+
+  function onTouchEnd() {
+    if (!active) return;
+    const item = active.node;
+    item.classList.remove('touch-dragging');
+    item.style.transform = '';
+    item.style.pointerEvents = '';
+    list.querySelectorAll('.queue-item').forEach((n) => n.classList.remove('drag-over'));
+    if (active.targetNode) reorderQueue(active.sourceId, active.targetNode.dataset.trackId);
+    active = null;
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend', onTouchEnd);
+  }
+
+  list.querySelectorAll('.queue-item').forEach((item) => {
+    const handle = item.querySelector('.drag-handle');
+    if (!handle) return;
+    handle.addEventListener('touchstart', (event) => {
+      event.stopPropagation();
       const touch = event.touches[0];
-      active = { node: item, sourceId: item.dataset.trackId, startY: touch.clientY, lastY: touch.clientY };
+      active = { node: item, sourceId: item.dataset.trackId, startY: touch.clientY, targetNode: null };
       item.classList.add('touch-dragging');
-    }, { passive: true });
-
-    item.addEventListener('touchmove', (event) => {
-      if (!active || active.node !== item) return;
-      const touch = event.touches[0];
-      active.lastY = touch.clientY;
-      item.style.transform = `translateY(${touch.clientY - active.startY}px) scale(1.02)`;
-      const target = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.queue-item');
-      $('queueList').querySelectorAll('.queue-item').forEach((node) => node.classList.remove('drag-over'));
-      if (target && target !== item) target.classList.add('drag-over');
-    }, { passive: true });
-
-    item.addEventListener('touchend', (event) => {
-      if (!active || active.node !== item) return;
-      const touch = event.changedTouches[0];
-      const target = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.queue-item');
-      item.classList.remove('touch-dragging');
-      item.style.transform = '';
-      $('queueList').querySelectorAll('.queue-item').forEach((node) => node.classList.remove('drag-over'));
-      if (target) reorderQueue(active.sourceId, target.dataset.trackId);
-      active = null;
+      // Attach document-level listeners (non-passive so we can preventDefault)
+      document.addEventListener('touchmove', onTouchMove, { passive: false });
+      document.addEventListener('touchend', onTouchEnd, { passive: true });
     }, { passive: true });
   });
 }
@@ -1066,6 +1093,7 @@ async function loadLibrary() {
 }
 
 async function initialLoad() {
+  initRoute();
   loadPlayStats();
   hardStopStartupPlayback();
   await loadLibrary();
@@ -1098,6 +1126,149 @@ function updateSeekProgress(value) {
   [$('seekRange'), $('overlaySeekRange')].filter(Boolean).forEach((range) => {
     range.style.setProperty('--progress', pct);
   });
+}
+
+// ─── v9.0.0: URL routing helpers ──────────────────────────────────────────────
+
+function encodeRoute(view, context) {
+  if (!view || view === 'home') return '#home';
+  if (!context?.value) return `#${view}`;
+  return `#${view}/${encodeURIComponent(context.value)}`;
+}
+
+function decodeRoute(hash) {
+  const h = (hash || '').replace(/^#/, '') || 'home';
+  if (!h || h === 'home' || h === 'nowplaying') return { view: 'home', context: null };
+  const slashIdx = h.indexOf('/');
+  if (slashIdx < 0) return { view: h, context: null };
+  const view = h.slice(0, slashIdx);
+  const value = decodeURIComponent(h.slice(slashIdx + 1));
+  return { view, context: { type: view, value } };
+}
+
+function handlePopState(event) {
+  const state = event.state;
+  const isOverlayOpen = !$('nowPlayingOverlay').classList.contains('hidden');
+
+  // If now-playing is open and we're navigating away from it, close the overlay
+  if (isOverlayOpen && !state?.nowPlaying) {
+    $('nowPlayingOverlay').classList.add('hidden');
+  }
+
+  // Forward-navigate to #nowplaying (e.g. browser forward button)
+  if (state?.nowPlaying) {
+    if ($('nowPlayingOverlay').classList.contains('hidden')) {
+      $('nowPlayingOverlay').classList.remove('hidden');
+      const panel = $('nowPlayingPanel');
+      if (panel) {
+        panel.scrollTop = 0;
+        panel.classList.remove('is-scrolled');
+        const sheet = $('overlayQueueSheet');
+        if (sheet) sheet.style.setProperty('--queue-safe-pad', '0px');
+      }
+      toggleQueueSheet(true);
+      requestAnimationFrame(updateNowPlayingScrollProgress);
+    }
+    return;
+  }
+
+  // Restore the navigation state
+  if (state?.view) {
+    S.view = state.view;
+    S.context = state.context || null;
+  } else {
+    const decoded = decodeRoute(location.hash);
+    S.view = decoded.view;
+    S.context = decoded.context;
+  }
+  renderView();
+  closeSidebar();
+}
+
+function initRoute() {
+  const h = location.hash;
+  if (h && h !== '#home' && h !== '#nowplaying') {
+    const { view, context } = decodeRoute(h);
+    S.view = view || 'home';
+    S.context = context || null;
+  } else {
+    S.view = 'home';
+    S.context = null;
+  }
+  // Use replaceState so the very first entry in history is properly stamped
+  history.replaceState(
+    { view: S.view, context: S.context || null },
+    '',
+    S.view === 'home' ? '#home' : (h || '#home'),
+  );
+}
+
+// ─── v9.0.0: Footer swipe-up gesture to reveal Now Playing ────────────────────
+// Allows users to gradually swipe up from the footer bar to open the Now
+// Playing screen, with the overlay tracking their thumb position in real-time.
+
+function bindFooterSwipeGesture() {
+  const footer = $('miniPlayer');
+  const overlay = $('nowPlayingOverlay');
+  if (!footer || !overlay) return;
+
+  let swipe = null;
+
+  footer.addEventListener('touchstart', (e) => {
+    if (!currentTrack() || !overlay.classList.contains('hidden')) return;
+    swipe = { startY: e.touches[0].clientY, startTime: Date.now(), active: false };
+  }, { passive: true });
+
+  footer.addEventListener('touchmove', (e) => {
+    if (!swipe) return;
+    const deltaY = swipe.startY - e.touches[0].clientY; // positive = finger moving up
+    if (!swipe.active) {
+      if (deltaY < -4) { swipe = null; return; } // moved down, cancel
+      if (deltaY < 10) return; // not moved enough to start
+      swipe.active = true;
+      overlay.classList.remove('hidden');
+      overlay.style.animation = 'none';
+      overlay.style.transition = 'none';
+    }
+    e.preventDefault();
+    const progress = Math.min(1, Math.max(0, deltaY / window.innerHeight));
+    overlay.style.transform = `translateY(${(1 - progress) * 100}%)`;
+    overlay.style.opacity = String(Math.min(1, 0.1 + progress * 1.2));
+  }, { passive: false });
+
+  footer.addEventListener('touchend', (e) => {
+    if (!swipe?.active) { swipe = null; return; }
+    const deltaY = swipe.startY - e.changedTouches[0].clientY;
+    const velocity = deltaY / Math.max(1, Date.now() - swipe.startTime); // px/ms
+    const commit = deltaY > 80 || velocity > 0.4;
+
+    overlay.style.transition = 'transform 0.32s cubic-bezier(0.32,0.72,0,1), opacity 0.32s ease';
+    overlay.style.transform = commit ? 'translateY(0)' : 'translateY(100%)';
+    overlay.style.opacity = commit ? '1' : '0';
+
+    overlay.addEventListener('transitionend', () => {
+      overlay.style.transform = '';
+      overlay.style.opacity = '';
+      overlay.style.animation = '';
+      overlay.style.transition = '';
+      if (commit) {
+        history.pushState({ nowPlaying: true, view: S.view, context: S.context || null }, '', '#nowplaying');
+        const panel = $('nowPlayingPanel');
+        if (panel) {
+          panel.scrollTop = 0;
+          panel.classList.remove('is-scrolled');
+          const sheet = $('overlayQueueSheet');
+          if (sheet) sheet.style.setProperty('--queue-safe-pad', '0px');
+        }
+        toggleQueueSheet(true);
+        requestAnimationFrame(updateNowPlayingScrollProgress);
+      } else {
+        overlay.classList.add('hidden');
+      }
+    }, { once: true });
+
+    swipe = null;
+  }, { passive: true });
 }
 
 function wireGlobalEvents() {
@@ -1156,7 +1327,38 @@ function wireGlobalEvents() {
   $('overlayNextBtn').onclick = nextTrack;
   $('prevBtn').onclick = prevTrack;
   $('overlayPrevBtn').onclick = prevTrack;
-  $('shuffleBtn').onclick = $('overlayShuffleBtn').onclick = () => { S.shuffle = !S.shuffle; updatePlayer(); };
+  $('shuffleBtn').onclick = $('overlayShuffleBtn').onclick = () => {
+    const cur = currentTrack();
+    if (!S.shuffle) {
+      // --- Turning shuffle ON ---
+      S.shuffle = true;
+      if (S.queue.length > 1 && cur) {
+        // Save the current order so we can restore it later
+        S.preShuffleQueue = [...S.queue];
+        S.preShuffleIndex = S.index;
+        // Shuffle all songs except the currently playing one, then place it first
+        const rest = S.queue.filter((_, i) => i !== S.index);
+        const shuffledRest = shuffledIds(rest.map((t) => t.id))
+          .map((id) => rest.find((t) => t.id === id)).filter(Boolean);
+        S.queue = [cur, ...shuffledRest];
+        S.index = 0;
+        renderQueue();
+      }
+    } else {
+      // --- Turning shuffle OFF → restore original order ---
+      S.shuffle = false;
+      if (S.preShuffleQueue) {
+        const currentId = cur?.id;
+        S.queue = S.preShuffleQueue;
+        const restored = currentId ? S.queue.findIndex((t) => t.id === currentId) : S.preShuffleIndex;
+        S.index = restored >= 0 ? restored : 0;
+        S.preShuffleQueue = null;
+        S.preShuffleIndex = -1;
+        renderQueue();
+      }
+    }
+    updatePlayer();
+  };
   $('repeatBtn').onclick = $('overlayRepeatBtn').onclick = () => { S.repeat = S.repeat === 'off' ? 'all' : S.repeat === 'all' ? 'one' : 'off'; updatePlayer(); };
 
   const bindSeek = (range, current, total) => {
@@ -1208,9 +1410,11 @@ function wireGlobalEvents() {
   });
 
   bindSwipeGestures();
+  bindFooterSwipeGesture();
 }
 
 wireGlobalEvents();
+window.addEventListener('popstate', handlePopState);
 initialLoad().catch((error) => {
   $('contentArea').innerHTML = `<div class="muted">Failed to load library: ${escapeHtml(error.message)}</div>`;
 });

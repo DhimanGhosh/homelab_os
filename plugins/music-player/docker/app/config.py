@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 APP_NAME    = os.getenv("APP_NAME",    "Music Player")
-APP_VERSION = os.getenv("APP_VERSION", "8.4.33")
+APP_VERSION = os.getenv("APP_VERSION", "9.0.1")
 
 MUSIC_ROOT       = Path(os.getenv("MUSIC_ROOT",    "/mnt/nas/media/music")).resolve()
 APP_DATA_DIR     = Path(os.getenv("APP_DATA_DIR",  "/mnt/nas/homelab/runtime/music-player/data")).resolve()

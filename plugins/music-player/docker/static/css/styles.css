@@ -1750,3 +1750,45 @@ a { color: inherit; }
   .now-playing-panel.is-scrolled .overlay-queue-sheet,
   .now-playing-panel.is-scrolled .overlay-queue-sheet.open { padding-top: calc(var(--np-compact-main-height, 260px) + 18px) !important; }
 }
+
+/* v9.0.1: Scroll flicker fix (correct placement — after v8.4.33 so !important wins).
+ *
+ * Root cause A — transition on min-height:
+ *   JS sets --np-main-height every rAF (~16 ms).  The v8.4.33 rule above adds
+ *   `transition: min-height .06s linear` which lags the height change by 60 ms.
+ *   During that gap, total content height < scrollTop + panelHeight, so the
+ *   browser resets scrollTop → visible bounce/flicker.
+ *   Fix: strip min-height from the transition entirely.
+ *
+ * Root cause B — queue sheet too short on short playlists (desktop):
+ *   On desktop the queue sheet is position:relative and contributes to scroll
+ *   height.  With only 1-3 songs the sheet is too short to allow the full
+ *   collapse scroll distance.
+ *   Fix: guarantee queue_min_height >= collapseDistance + panelHeight - compactHeight
+ *        Desktop: 520px + 100dvh - 310px = 210px + 100dvh
+ *        (collapseDistance=fullHeight-compactHeight=784-310=474; add header≈46 → ~520)
+ */
+.now-playing-main {
+  transition:
+    grid-template-columns .06s linear,
+    padding .06s linear,
+    border-radius .06s linear !important;
+  /* min-height intentionally omitted: driven by JS every rAF, CSS transition here causes jank */
+}
+
+@media (min-width: 901px) {
+  /* Desktop only — on mobile the queue sheet is position:fixed (bottom-sheet)
+     so it does not affect the panel's scroll height. */
+  .overlay-queue-sheet,
+  .overlay-queue-sheet.open {
+    min-height: calc(210px + 100dvh) !important;
+  }
+}
+
+/* Drag handle: must not inherit pan-y so the browser yields the touch to JS
+   immediately without any scroll-start delay. */
+.drag-handle {
+  touch-action: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+}

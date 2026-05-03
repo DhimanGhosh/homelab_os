@@ -98,12 +98,56 @@ class PluginInstaller:
                 except Exception:
                     pass
 
+    def _stop_plugin_containers(self, plugin_id: str, plugin_dir: Path) -> None:
+        """Stop and remove containers for a plugin WITHOUT touching persistent data."""
+        compose_dir = plugin_dir / "docker"
+        if compose_dir.exists() and (compose_dir / "docker-compose.yml").exists():
+            # No "-v" flag: named Docker volumes are kept.
+            # Bind-mount data on the NAS is never touched here.
+            self.runner.run(
+                self._docker_compose_cmd(plugin_id, "down", "--remove-orphans"),
+                cwd=compose_dir,
+                check=False,
+            )
+        self.runner.run(["docker", "rm", "-f", plugin_id], check=False)
+
     def _cleanup_existing_install(self, plugin_id: str) -> None:
+        """Prepare for a fresh install / update.
+
+        IMPORTANT — Persistent Storage Contract
+        ─────────────────────────────���──────────
+        Each plugin stores its user data under:
+            /mnt/nas/homelab/runtime/<plugin-id>/data/
+
+        This directory is bind-mounted into the container via docker-compose.yml
+        and MUST survive plugin updates.  We therefore split two cases:
+
+        • Update (plugin already in registry):
+            Stop containers, wipe the *code* directory, keep the data directory.
+
+        • Orphan cleanup (plugin NOT in registry but directory exists):
+            Wipe everything — containers, code directory, AND data directory —
+            because there is no prior install to upgrade from.
+        """
+        plugin_dir = self.installed_plugins_dir / plugin_id
         existing = self.registry.get_plugin(plugin_id)
+
         if existing:
-            self.uninstall_plugin(plugin_id)
+            # ── UPDATE PATH: preserve user data ──────────────────────────────
+            # Stop containers (no -v so Docker volumes stay intact)
+            self._stop_plugin_containers(plugin_id, plugin_dir)
+            # Remove only the plugin code directory, NOT the NAS data directory
+            if plugin_dir.exists():
+                shutil.rmtree(plugin_dir, ignore_errors=True)
+            self.state_store.remove_plugin_state(plugin_id)
+            try:
+                self.proxy.remove_plugin_route(plugin_id)
+            except Exception:
+                pass
+            # Data directory is intentionally left untouched
         else:
-            plugin_dir = self.installed_plugins_dir / plugin_id
+            # ── ORPHAN CLEANUP: nothing to preserve ─────────────────���────────
+            self._stop_plugin_containers(plugin_id, plugin_dir)
             if plugin_dir.exists():
                 shutil.rmtree(plugin_dir, ignore_errors=True)
             self._remove_plugin_data_paths(plugin_id, plugin_dir)
@@ -160,9 +204,13 @@ class PluginInstaller:
         return entry
 
     def uninstall_plugin(self, plugin_id: str) -> dict:
+        """Explicit uninstall requested by the user — removes containers AND data."""
         plugin_entry = self.registry.get_plugin(plugin_id)
         plugin_dir = self.installed_plugins_dir / plugin_id
 
+        # Stop containers.  Data on the NAS is handled below via
+        # _remove_plugin_data_paths; named Docker volumes are removed with -v.
+        self._stop_plugin_containers(plugin_id, plugin_dir)
         compose_dir = plugin_dir / "docker"
         if compose_dir.exists() and (compose_dir / "docker-compose.yml").exists():
             self.runner.run(
