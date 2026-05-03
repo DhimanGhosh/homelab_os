@@ -14,7 +14,8 @@ RUN pip install --no-cache-dir --upgrade pip \
         "pydantic>=2.9.0,<3" \
         "jinja2>=3.1.2,<4" \
         "python-multipart>=0.0.9" \
-        "apscheduler>=3.10.4,<4"
+        "apscheduler>=3.10.4,<4" \
+        "scikit-learn>=1.4.0,<2"
 
 # app.py is copied as main.py to avoid shadowing the app/ package on import
 COPY app.py /app/main.py

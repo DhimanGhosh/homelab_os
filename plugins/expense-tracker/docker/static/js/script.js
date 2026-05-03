@@ -4,6 +4,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const fmt = n => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (a, b) => b > 0 ? Math.min((a / b) * 100, 100).toFixed(1) : 0;
+let _categories = [];
 
 // Always returns today's date in YYYY-MM-DD using the *local* timezone, not UTC
 function localToday() {
@@ -25,6 +26,28 @@ function toast(msg, type = 'ok') {
   t.className = `toast show ${type}`;
   t.style.display = 'block';
   setTimeout(() => { t.style.display = 'none'; t.className = 'toast'; }, 3000);
+}
+
+function renderList(id, items, emptyText = 'No insights yet.') {
+  const node = $(id);
+  if (!node) return;
+  node.innerHTML = items && items.length
+    ? items.map(item => `<li>${esc(item)}</li>`).join('')
+    : `<li class="empty compact">${esc(emptyText)}</li>`;
+}
+
+async function loadCategories() {
+  let rows;
+  try { rows = await api('GET', '/api/categories'); }
+  catch { return; }
+  _categories = rows.map(r => r.name);
+  const options = _categories.map(c => `<option value="${esc(c)}"></option>`).join('');
+  $('categoryOptions').innerHTML = options;
+  const filter = $('filterCategory');
+  const current = filter.value;
+  filter.innerHTML = '<option value="">All Categories</option>' +
+    _categories.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  filter.value = current;
 }
 
 /* ── Navigation ─────────────────────────────────────────────────────────── */
@@ -59,6 +82,8 @@ async function loadDashboard() {
   catch (e) { toast('Failed to load dashboard', 'err'); return; }
 
   const s = data.status;
+  $('dashBalance').textContent   = fmt(data.balance || 0);
+  $('bankBalanceInput').value    = data.balance || 0;
   $('dashIncome').textContent    = fmt(s.income);
   $('dashExpenses').textContent  = fmt(s.total_expenses);
   $('dashRemaining').textContent = fmt(s.remaining);
@@ -71,6 +96,9 @@ async function loadDashboard() {
   $('budgetBarLabel').textContent = s.expense_limit > 0
     ? `${fmt(s.total_expenses)} of ${fmt(s.expense_limit)} (${s.budget_pct}%)`
     : 'No expense limit set';
+  if (data.recurring && data.recurring.total > 0) {
+    $('budgetBarLabel').textContent += ` · includes ${fmt(data.recurring.total)} projected recurring`;
+  }
 
   // Recent expenses
   const ul = $('recentList');
@@ -97,7 +125,21 @@ async function loadDashboard() {
       plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } } },
     },
   });
+
+  renderList('dashboardInsights', data.insights?.descriptions);
+  renderList('dashboardInvestments', data.insights?.investment_suggestions);
 }
+
+$('balanceForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  try {
+    const result = await api('POST', '/api/balance', { balance: parseFloat(fd.get('balance')) || 0 });
+    $('dashBalance').textContent = fmt(result.balance);
+    $('bankBalanceInput').value = result.balance;
+    toast('Balance saved');
+  } catch { toast('Failed to save balance', 'err'); }
+});
 
 // Quick-add form — default to local today
 $('quickDate').value = localToday();
@@ -117,7 +159,31 @@ $('quickForm').addEventListener('submit', async e => {
     e.target.reset();
     $('quickDate').value = localToday();
     loadDashboard();
+    loadCategories();
   } catch { toast('Failed to add expense', 'err'); }
+});
+
+async function predictInto(form, hintId) {
+  const desc = form.elements['description']?.value || '';
+  if (desc.trim().length < 3) return;
+  let result;
+  try { result = await api('POST', '/api/predict-category', { description: desc }); }
+  catch { return; }
+  if (!form.elements['category'].value && result.category) {
+    form.elements['category'].value = result.category;
+  }
+  const hint = $(hintId);
+  if (hint) {
+    const source = result.source === 'ml' ? 'ML' : 'rules';
+    const conf = Math.round((result.confidence || 0) * 100);
+    hint.textContent = result.category ? `${source} suggests ${result.category}${conf ? ` (${conf}%)` : ''}` : '';
+  }
+}
+
+let quickPredictTimer = null;
+$('quickDescription').addEventListener('input', () => {
+  clearTimeout(quickPredictTimer);
+  quickPredictTimer = setTimeout(() => predictInto($('quickForm'), 'quickPrediction'), 350);
 });
 
 /* ── Transactions ────────────────────────────────────────────────────────── */
@@ -156,6 +222,7 @@ async function loadTransactions() {
 $('openAddModal').addEventListener('click', () => {
   $('expenseModalTitle').textContent = 'Add Expense';
   $('expenseForm').reset();
+  $('expensePrediction').textContent = '';
   $('expenseForm').elements['id'].value = '';
   $('expenseForm').elements['date'].value = localToday();
   openModal('expenseModal');
@@ -175,6 +242,7 @@ async function openEdit(id) {
   f.elements['category'].value    = r.category;
   f.elements['description'].value = r.description;
   f.elements['cardholder'].value  = r.cardholder;
+  $('expensePrediction').textContent = '';
   $('expenseModalTitle').textContent = 'Edit Expense';
   openModal('expenseModal');
 }
@@ -194,14 +262,22 @@ $('expenseForm').addEventListener('submit', async e => {
     toast(id ? 'Updated' : 'Added');
     closeModal('expenseModal');
     loadTransactions();
+    loadDashboard();
+    loadCategories();
   } catch { toast('Save failed', 'err'); }
 });
 
 async function delExpense(id) {
   if (!confirm('Delete this expense?')) return;
-  try { await api('DELETE', `/api/expenses/${id}`); toast('Deleted'); loadTransactions(); }
+  try { await api('DELETE', `/api/expenses/${id}`); toast('Deleted'); loadTransactions(); loadDashboard(); loadCategories(); }
   catch { toast('Delete failed', 'err'); }
 }
+
+let expensePredictTimer = null;
+$('expenseForm').elements['description'].addEventListener('input', () => {
+  clearTimeout(expensePredictTimer);
+  expensePredictTimer = setTimeout(() => predictInto($('expenseForm'), 'expensePrediction'), 350);
+});
 
 /* ── Budgets ─────────────────────────────────────────────────────────────── */
 async function loadBudget() {
@@ -233,7 +309,7 @@ $('budgetForm').addEventListener('submit', async e => {
   ['income', 'expense_limit', 'emergency_fund', 'investment_goal'].forEach(k => {
     body[k] = parseFloat(fd.get(k)) || 0;
   });
-  try { await api('POST', '/api/budget', body); toast('Budget saved'); loadBudget(); }
+  try { await api('POST', '/api/budget', body); toast('Budget saved'); loadBudget(); loadDashboard(); }
   catch { toast('Save failed', 'err'); }
 });
 
@@ -256,6 +332,9 @@ async function loadAnalytics() {
       datasets: [{
         label: 'Expenses', data: tVals, borderColor: '#6366f1',
         backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: .4,
+      }, {
+        label: 'Projected recurring', data: data.trends.map(t => t.recurring || 0),
+        borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.12)', tension: .35,
       }],
     },
     options: {
@@ -292,6 +371,8 @@ async function loadAnalytics() {
       <div class="item-info"><strong>${esc(b.category)}</strong></div>
       <span class="amt-neg">${fmt(b.total)}</span>
     </li>`).join('') : '<li class="empty">No data yet.</li>';
+  renderList('analyticsInsights', data.insights?.descriptions);
+  renderList('analyticsInvestments', data.insights?.investment_suggestions);
 }
 
 /* ── Recurring ───────────────────────────────────────────────────────────── */
@@ -355,12 +436,14 @@ $('recurringForm').addEventListener('submit', async e => {
     toast(id ? 'Template updated' : 'Template created');
     closeModal('recurringModal');
     loadRecurring();
+    loadCategories();
+    loadDashboard();
   } catch { toast('Save failed', 'err'); }
 });
 
 async function delRecurring(id) {
   if (!confirm('Delete this recurring template?')) return;
-  try { await api('DELETE', `/api/recurring/${id}`); toast('Deleted'); loadRecurring(); }
+  try { await api('DELETE', `/api/recurring/${id}`); toast('Deleted'); loadRecurring(); loadCategories(); loadDashboard(); }
   catch { toast('Delete failed', 'err'); }
 }
 
@@ -375,4 +458,5 @@ document.querySelectorAll('.modal').forEach(m =>
 
 /* ── Boot ────────────────────────────────────────────────────────────────── */
 const initView = (window.location.hash.slice(1) || 'dashboard');
+loadCategories();
 navigate(VIEWS.includes(initView) ? initView : 'dashboard');

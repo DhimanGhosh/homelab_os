@@ -1,4 +1,5 @@
 from __future__ import annotations
+import calendar
 from datetime import date, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -21,10 +22,18 @@ def _next_due(current: date, frequency: str) -> date:
         m = current.month + 1
         y = current.year + (m - 1) // 12
         m = ((m - 1) % 12) + 1
-        return current.replace(year=y, month=m)
+        day = min(current.day, calendar.monthrange(y, m)[1])
+        return current.replace(year=y, month=m, day=day)
     if frequency == "yearly":
-        return current.replace(year=current.year + 1)
+        y = current.year + 1
+        day = min(current.day, calendar.monthrange(y, current.month)[1])
+        return current.replace(year=y, day=day)
     return current + timedelta(days=30)
+
+
+def _month_bounds(month: str) -> tuple[date, date]:
+    y, m = int(month.split("-")[0]), int(month.split("-")[1])
+    return date(y, m, 1), date(y, m, calendar.monthrange(y, m)[1])
 
 
 def generate_due_expenses() -> None:
@@ -106,8 +115,48 @@ class RecurringService:
             return []
         upcoming = []
         d = tmpl.next_due
-        cutoff = date.today().replace(month=min(date.today().month + months, 12))
+        today = date.today()
+        cutoff_month = today.month + months
+        cutoff_year = today.year + (cutoff_month - 1) // 12
+        cutoff_month = ((cutoff_month - 1) % 12) + 1
+        cutoff_day = min(today.day, calendar.monthrange(cutoff_year, cutoff_month)[1])
+        cutoff = date(cutoff_year, cutoff_month, cutoff_day)
         while d <= cutoff and len(upcoming) < 20:
             upcoming.append({"date": str(d), "amount": tmpl.amount, "description": tmpl.description})
             d = _next_due(d, tmpl.frequency)
         return upcoming
+
+    def projected_for_month(self, month: str) -> list[dict]:
+        start, end = _month_bounds(month)
+        templates = self.db.query(RecurringTemplate).filter(RecurringTemplate.is_active == True).all()
+        generated = self._generated_keys(start, end)
+        projected = []
+        for tmpl in templates:
+            due = tmpl.next_due
+            while due < start:
+                due = _next_due(due, tmpl.frequency)
+            while due <= end:
+                amount = -abs(tmpl.amount)
+                key = (due, round(amount, 2), tmpl.category, f"[Auto] {tmpl.description}")
+                if key not in generated:
+                    projected.append({
+                        "date": due,
+                        "amount": amount,
+                        "category": tmpl.category,
+                        "description": f"[Recurring] {tmpl.description}",
+                        "cardholder": tmpl.cardholder or "",
+                        "template_id": tmpl.id,
+                    })
+                due = _next_due(due, tmpl.frequency)
+        return projected
+
+    def projected_total_for_month(self, month: str) -> float:
+        return round(sum(abs(item["amount"]) for item in self.projected_for_month(month)), 2)
+
+    def _generated_keys(self, start: date, end: date) -> set[tuple]:
+        rows = self.db.query(Expense).filter(Expense.date >= start, Expense.date <= end).all()
+        return {
+            (row.date, round(row.amount, 2), row.category, row.description or "")
+            for row in rows
+            if (row.description or "").startswith("[Auto] ")
+        }

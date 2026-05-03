@@ -41,3 +41,11 @@ class RecurringTemplate(Base):
     next_due    = Column(Date, nullable=False)
     is_active   = Column(Boolean, default=True)
     created_at  = Column(DateTime, default=datetime.utcnow)
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key        = Column(String, primary_key=True, index=True)
+    value      = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

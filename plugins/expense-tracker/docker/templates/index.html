@@ -33,10 +33,19 @@
 
     <!-- Summary cards -->
     <div class="cards" id="summaryCards">
+      <div class="card"><div class="card-label">Bank Balance</div><div class="card-val success" id="dashBalance">—</div></div>
       <div class="card"><div class="card-label">Monthly Income</div><div class="card-val" id="dashIncome">—</div></div>
       <div class="card"><div class="card-label">Total Expenses</div><div class="card-val expense" id="dashExpenses">—</div></div>
       <div class="card"><div class="card-label">Remaining Budget</div><div class="card-val" id="dashRemaining">—</div></div>
       <div class="card"><div class="card-label">Savings</div><div class="card-val" id="dashSavings">—</div></div>
+    </div>
+
+    <div class="section-box">
+      <div class="section-title">Current Bank Balance</div>
+      <form id="balanceForm" class="balance-form">
+        <input type="number" name="balance" id="bankBalanceInput" placeholder="Current balance ₹" step="0.01">
+        <button type="submit" class="btn btn-primary">Set Balance</button>
+      </form>
     </div>
 
     <!-- Budget bar -->
@@ -51,17 +60,15 @@
       <div class="section-title">Quick Add Expense</div>
       <form id="quickForm" class="quick-form">
         <input   type="number" name="amount"      placeholder="Amount ₹" step="0.01" min="0.01" required>
-        <select  name="category" required>
-          <option value="">Category…</option>
-          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-        </select>
-        <input   type="text"   name="description" placeholder="Description">
+        <input   type="text"   name="category"    placeholder="Category" list="categoryOptions" required>
+        <input   type="text"   name="description" id="quickDescription" placeholder="Description">
         <select  name="cardholder">
           {% for ch in cardholders %}<option value="{{ ch }}">{{ ch }}</option>{% endfor %}
         </select>
         <input   type="date"   name="date"        id="quickDate">
         <button  type="submit" class="btn btn-primary">+ Add</button>
       </form>
+      <p id="quickPrediction" class="hint"></p>
     </div>
 
     <!-- Recent + chart row -->
@@ -73,6 +80,17 @@
       <div class="section-box">
         <div class="section-title">Spending by Category</div>
         <canvas id="pieChart"></canvas>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="section-box">
+        <div class="section-title">Smart Spending Notes</div>
+        <ul id="dashboardInsights" class="insight-list"></ul>
+      </div>
+      <div class="section-box">
+        <div class="section-title">Investment Suggestions</div>
+        <ul id="dashboardInvestments" class="insight-list"></ul>
       </div>
     </div>
   </section>
@@ -154,8 +172,18 @@
       </div>
     </div>
     <div class="section-box">
-      <div class="section-title">Category Details</div>
+        <div class="section-title">Category Details</div>
       <ul id="catBreakdown" class="item-list"></ul>
+    </div>
+    <div class="two-col">
+      <div class="section-box">
+        <div class="section-title">Smart Descriptions</div>
+        <ul id="analyticsInsights" class="insight-list"></ul>
+      </div>
+      <div class="section-box">
+        <div class="section-title">Investment Ideas</div>
+        <ul id="analyticsInvestments" class="insight-list"></ul>
+      </div>
     </div>
   </section>
 
@@ -189,12 +217,10 @@
         </select>
       </label>
       <label>Category
-        <select name="category" required>
-          <option value="">Select…</option>
-          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-        </select>
+        <input type="text" name="category" list="categoryOptions" required>
       </label>
       <label>Description <input type="text" name="description"></label>
+      <p id="expensePrediction" class="hint"></p>
       <label>Cardholder
         <select name="cardholder">
           {% for ch in cardholders %}<option value="{{ ch }}">{{ ch }}</option>{% endfor %}
@@ -218,10 +244,7 @@
       <label>Description <input type="text" name="description" required></label>
       <label>Amount (₹)  <input type="number" name="amount" step="0.01" min="0.01" required></label>
       <label>Category
-        <select name="category" required>
-          <option value="">Select…</option>
-          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-        </select>
+        <input type="text" name="category" list="categoryOptions" required>
       </label>
       <label>Cardholder
         <select name="cardholder">
@@ -247,6 +270,9 @@
 
 <!-- Toast -->
 <div id="toast" class="toast"></div>
+<datalist id="categoryOptions">
+  {% for c in categories %}<option value="{{ c }}"></option>{% endfor %}
+</datalist>
 
 <script src="/static/js/script.js"></script>
 </body>

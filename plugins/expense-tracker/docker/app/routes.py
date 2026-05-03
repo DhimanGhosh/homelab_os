@@ -11,6 +11,7 @@ from app.database import get_db
 from app.services.expense_service import ExpenseService
 from app.services.budget_service import BudgetService
 from app.services.recurring_service import RecurringService
+from app.services.balance_service import BalanceService
 
 router = APIRouter()
 
@@ -47,21 +48,28 @@ def dashboard(db: Session = Depends(get_db)):
     month      = today.strftime("%Y-%m")
     exp_svc    = ExpenseService(db)
     bud_svc    = BudgetService(db)
+    rec_svc    = RecurringService(db)
+    bal_svc    = BalanceService(db)
 
     expenses   = exp_svc.list(month=month)
-    total_exp  = sum(abs(e.amount) for e in expenses if e.amount < 0)
+    recurring  = rec_svc.projected_for_month(month)
+    total_exp  = sum(abs(e.amount) for e in expenses if e.amount < 0) + sum(abs(r["amount"]) for r in recurring)
     budget     = bud_svc.get(month)
     status     = bud_svc.compute_status(budget, total_exp)
-    breakdown  = exp_svc.category_breakdown(month)
-    recent     = [_fmt_expense(e) for e in expenses[:5]]
-    trends     = exp_svc.monthly_totals(months=6)
+    breakdown  = exp_svc.category_breakdown(month, include_recurring=True)
+    recent     = [_fmt_expense(e) for e in expenses if e.amount < 0][:5]
+    trends     = exp_svc.monthly_totals(months=6, include_recurring=True)
+    insights   = exp_svc.smart_insights(month, status, breakdown, trends)
 
     return {
         "month":         month,
         "status":        status,
+        "balance":       bal_svc.get_balance(),
+        "recurring":     {"projected": [_fmt_projection(r) for r in recurring], "total": round(sum(abs(r["amount"]) for r in recurring), 2)},
         "breakdown":     breakdown,
         "recent":        recent,
         "trends":        trends,
+        "insights":       insights,
     }
 
 
@@ -105,15 +113,27 @@ def delete_expense(eid: int, db: Session = Depends(get_db)):
 # ── Category helpers ──────────────────────────────────────────────────────────
 
 @router.get("/api/categories")
-def list_categories():
-    return [{"name": c} for c in CATEGORIES]
+def list_categories(db: Session = Depends(get_db)):
+    return [{"name": c} for c in ExpenseService(db).all_categories()]
 
 
 @router.post("/api/predict-category")
 def predict_category(payload: dict, db: Session = Depends(get_db)):
     desc = payload.get("description", "")
-    cat  = ExpenseService(db).predict_category(desc)
-    return {"category": cat}
+    return ExpenseService(db).predict_category_details(desc)
+
+
+# ── Balance ──────────────────────────────────────────────────────────────────
+
+@router.get("/api/balance")
+def get_balance(db: Session = Depends(get_db)):
+    return {"balance": BalanceService(db).get_balance()}
+
+
+@router.post("/api/balance")
+def save_balance(payload: dict, db: Session = Depends(get_db)):
+    amount = float(payload.get("balance", 0))
+    return {"balance": BalanceService(db).set_balance(amount)}
 
 
 # ── Budget ────────────────────────────────────────────────────────────────────
@@ -124,9 +144,10 @@ def get_budget(month: Optional[str] = None, db: Session = Depends(get_db)):
         month = date.today().strftime("%Y-%m")
     bud_svc   = BudgetService(db)
     exp_svc   = ExpenseService(db)
+    rec_svc   = RecurringService(db)
     budget    = bud_svc.get(month)
     expenses  = exp_svc.list(month=month)
-    total_exp = sum(abs(e.amount) for e in expenses if e.amount < 0)
+    total_exp = sum(abs(e.amount) for e in expenses if e.amount < 0) + rec_svc.projected_total_for_month(month)
     return bud_svc.compute_status(budget, total_exp)
 
 
@@ -147,9 +168,15 @@ def save_budget(payload: dict, db: Session = Depends(get_db)):
 def analytics(months: int = 6, db: Session = Depends(get_db)):
     exp_svc   = ExpenseService(db)
     month     = date.today().strftime("%Y-%m")
+    trends    = exp_svc.monthly_totals(months=months, include_recurring=True)
+    breakdown = exp_svc.category_breakdown(month, include_recurring=True)
+    budget    = BudgetService(db).get(month)
+    total_exp = trends[-1]["expenses"] if trends else 0
+    status    = BudgetService(db).compute_status(budget, total_exp)
     return {
-        "trends":    exp_svc.monthly_totals(months=months),
-        "breakdown": exp_svc.category_breakdown(month),
+        "trends":    trends,
+        "breakdown": breakdown,
+        "insights":  exp_svc.smart_insights(month, status, breakdown, trends),
     }
 
 
@@ -236,6 +263,17 @@ def _fmt_recurring(t) -> dict:
     }
 
 
+def _fmt_projection(item: dict) -> dict:
+    return {
+        "date":        str(item["date"]),
+        "amount":      round(item["amount"], 2),
+        "category":    item["category"],
+        "description": item["description"],
+        "cardholder":  item.get("cardholder", ""),
+        "template_id": item.get("template_id"),
+    }
+
+
 def _parse_expense_payload(p: dict) -> dict:
     raw_amount = float(p.get("amount", 0))
     # Expenses are stored negative, income positive
@@ -244,7 +282,7 @@ def _parse_expense_payload(p: dict) -> dict:
     return {
         "date":        date.fromisoformat(p["date"]),
         "amount":      amount,
-        "category":    p.get("category", "Other"),
+        "category":    (p.get("category") or "Other").strip() or "Other",
         "description": p.get("description", ""),
         "cardholder":  p.get("cardholder", ""),
     }

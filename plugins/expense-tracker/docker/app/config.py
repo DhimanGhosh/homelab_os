@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 APP_NAME    = os.getenv("APP_NAME", "Expense Tracker")
-APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+APP_VERSION = os.getenv("APP_VERSION", "1.1.0")
 PORT        = int(os.getenv("PORT", "8161"))
 
 DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/mnt/nas/homelab/runtime/expense-tracker/data"))
