@@ -15,7 +15,7 @@ venv/
 env/
 
 # Secrets / local config
-.env
+# .env
 .env.*
 *.pem
 *.key
