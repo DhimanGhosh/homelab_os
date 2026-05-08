@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 
 from homelab_os import __version__
 from homelab_os.core.api.control_center import router as control_center_router
@@ -32,9 +33,9 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {'status': 'ok', 'service': 'homelab_os_core', 'version': __version__}
 
-    @app.get('/')
-    def root() -> dict[str, str]:
-        return {'message': 'Homelab OS core is running', 'version': __version__}
+    @app.get('/', include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse(url='/api/control-center')
 
     return app
 

@@ -1,6 +1,6 @@
 # Homelab OS
 
-**Version 3.1.2** · Plugin-based Raspberry Pi homelab control platform · Python ≥ 3.11
+**Version 3.2.0** · Plugin-based Raspberry Pi homelab control platform · Python ≥ 3.11
 
 Homelab OS turns a Raspberry Pi into a personal cloud and application platform. A single bootstrap command sets up the entire system. Each app runs as an isolated Docker container managed through a unified Control Center dashboard or the `homelabctl` CLI. All services are exposed securely over HTTPS via Tailscale — no port forwarding required.
 
@@ -352,7 +352,7 @@ homelabctl install-plugin build/my-plugin.v1.0.0.tgz --env-file .env
 
 ## Auto-Recovery & Watchdog
 
-The `homelab-watchdog` systemd service is installed automatically during `bootstrap.py`. It runs continuously in the background and restarts any plugin whose Docker container has stopped unexpectedly.
+The `homelab-watchdog` systemd service is installed automatically during `bootstrap.py`. It runs continuously in the background and restarts Control Center / Pi-hole when needed. It also saves last-known-good plugin code snapshots every 30 minutes for plugins that are currently marked as running, so self-heal can restore the latest stable state instead of falling back to old bundles.
 
 ```bash
 # Check watchdog status
@@ -383,7 +383,34 @@ homelabctl self-heal --env-file .env
 2. Before wiping Docker storage, checks `docker ps -q` — if any containers are running the repair is aborted to protect healthy services.
 3. Checks Pi-hole is running and resets its admin password to the value in `.env` using both the v5 (`pihole setpassword`) and v6 (`pihole-FTL --config webserver.api.password`) methods.
 4. Reconciles Caddy routes for all installed plugins.
-5. Reinstalls and re-enables the watchdog service.
+5. Starts installed plugins from the installed code directory. If a plugin fails to start, restores that plugin from its last-known-good snapshot and retries.
+6. Reinstalls and re-enables the watchdog service.
+
+
+### Last-known-good plugin state
+
+Homelab OS stores safe plugin code snapshots under:
+
+```text
+/mnt/nas/homelab/backups/plugin-working-state/
+```
+
+These snapshots contain plugin code only. They do **not** copy or delete plugin user data under `/mnt/nas/homelab/runtime/<plugin-id>/data/`.
+
+Useful commands:
+
+```bash
+# Save snapshots for currently running plugins
+homelabctl sync-working-state --env-file .env --healthy-only
+
+# List saved working states
+homelabctl list-working-state --env-file .env
+
+# Restore one plugin from its last-known-good state and start it
+homelabctl restore-working-state music-player --env-file .env
+```
+
+The Control Center also exposes **Save Working** and **Restore Working** buttons per plugin. `Install All` and `Update All` run sequentially to avoid overloading Raspberry Pi 4B during Docker builds.
 
 ---
 

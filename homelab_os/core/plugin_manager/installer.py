@@ -12,6 +12,7 @@ from homelab_os.core.plugin_manager.registry import PluginRegistry
 from homelab_os.core.services.process_runner import ProcessRunner
 from homelab_os.core.services.reverse_proxy import ReverseProxyService
 from homelab_os.core.services.state_store import StateStore
+from homelab_os.core.services.working_state import PluginWorkingStateService
 
 
 class PluginInstaller:
@@ -191,6 +192,21 @@ class PluginInstaller:
             manifest = self._read_manifest(source_dir)
             plugin_id = manifest["id"]
             target_dir = self.installed_plugins_dir / plugin_id
+
+            # Before replacing code, capture the currently installed version as
+            # last-known-good. This gives install/update rollback a safe target
+            # and prevents self-heal from falling back to random old bundles.
+            if self.registry.get_plugin(plugin_id) and self._path_exists_without_raising(target_dir):
+                try:
+                    PluginWorkingStateService(self.settings, self.registry, self.state_store).capture_plugin(
+                        plugin_id,
+                        reason=f"pre-install-{manifest.get('version', 'unknown')}",
+                    )
+                except Exception:
+                    # Snapshot failure should not block the install; the
+                    # Control Center job will still handle rollback if an older
+                    # working snapshot exists.
+                    pass
 
             self._cleanup_existing_install(plugin_id)
             if self._path_exists_without_raising(target_dir):

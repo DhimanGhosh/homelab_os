@@ -21,7 +21,7 @@ def list_plugins() -> dict:
 def get_plugin(plugin_id: str) -> dict:
     settings = load_settings(".env")
     registry = PluginRegistry(settings.manifests_dir / "installed_plugins.json")
-    plugin = registry.get(plugin_id)
+    plugin = registry.get_plugin(plugin_id)
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")
     return plugin
@@ -31,7 +31,7 @@ def get_plugin(plugin_id: str) -> dict:
 def open_plugin(plugin_id: str) -> dict:
     settings = load_settings(".env")
     registry = PluginRegistry(settings.manifests_dir / "installed_plugins.json")
-    plugin = registry.get(plugin_id)
+    plugin = registry.get_plugin(plugin_id)
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")
 

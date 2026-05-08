@@ -51,7 +51,7 @@ function renderNotifications() {
 
 async function restartDevice() {
   if (!confirm('Restart the Raspberry Pi now?')) return;
-  await apiJson('/control-center/device/restart', { method: 'POST' });
+  await apiJson('/api/control-center/device/restart', { method: 'POST' });
   alert('Reboot scheduled. The Control Center will come back once the device is online again.');
 }
 
@@ -90,6 +90,8 @@ function appCard(app) {
       : `<button class="secondary" data-plugin-action="start" data-plugin-id="${esc(app.id)}">Start</button>`}
        <button class="secondary" data-plugin-action="restart" data-plugin-id="${esc(app.id)}">Restart</button>
        <button class="secondary" data-plugin-action="healthcheck" data-plugin-id="${esc(app.id)}">Healthcheck</button>
+       <button class="secondary" data-save-working-state="${esc(app.id)}">Save Working</button>
+       ${app.working_state_snapshot_id ? `<button class="secondary" data-restore-working-state="${esc(app.id)}">Restore Working</button>` : ''}
        <button class="danger-soft" data-plugin-action="uninstall" data-plugin-id="${esc(app.id)}">Uninstall</button>`
     : primaryInstallOrUpdateBtn;
 
@@ -116,6 +118,7 @@ function appCard(app) {
       <div class="meta-line">ID: ${esc(app.id)}</div>
       <div class="meta-line">Installed: ${esc(app.installed_version || '—')}</div>
       <div class="meta-line">Latest: ${esc(app.latest_version || '—')}${updateAvailable ? ' <span class="tiny" style="color:#8f84ff">update available</span>' : ''}</div>
+      <div class="meta-line">Working state: ${app.working_state_version ? `v${esc(app.working_state_version)}${app.working_state_created_at ? ' · ' + esc(app.working_state_created_at) : ''}` : 'not saved yet'}</div>
       <div class="meta-line">Port: ${esc(app.port || '—')}</div>
       <div class="meta-line">URL: ${installed && app.public_url ? `<a class="inline-link" href="${esc(app.public_url)}" target="_blank">${esc(app.public_url)}</a>` : '—'}</div>
       <div class="actions">${openBtn}${actionBtns}</div>
@@ -198,6 +201,25 @@ async function deleteBundle(filename) {
   await refreshSummary();
 }
 
+async function saveWorkingState(pluginId) {
+  const { res, data } = await apiJson('/api/control-center/plugins/' + encodeURIComponent(pluginId) + '/save-working-state', { method: 'POST' });
+  if (!res.ok) throw new Error(data.detail || data.message || 'Failed to save working state');
+  await refreshSummary();
+}
+
+async function restoreWorkingState(pluginId) {
+  if (!confirm('Restore ' + pluginId + ' from its last-known-good working state?')) return;
+  const { res, data } = await apiJson('/api/control-center/plugins/' + encodeURIComponent(pluginId) + '/restore-working-state', { method: 'POST' });
+  if (!res.ok) throw new Error(data.detail || data.message || 'Failed to restore working state');
+  await refreshSummary();
+}
+
+async function syncWorkingState() {
+  const { res, data } = await apiJson('/api/control-center/working-state/sync', { method: 'POST' });
+  if (!res.ok) throw new Error(data.detail || data.message || 'Failed to sync working state');
+  await refreshSummary();
+}
+
 function wireAppButtons() {
   document.querySelectorAll('[data-plugin-action]').forEach((btn) => {
     btn.onclick = () => pluginAction(btn.dataset.pluginId, btn.dataset.pluginAction).catch((err) => alert(String(err)));
@@ -221,6 +243,20 @@ function wireAppButtons() {
       e.preventDefault();
       e.stopPropagation();
       installBundle(btn.dataset.updateApp, btn.dataset.bundleFilename).catch((err) => alert(String(err)));
+    };
+  });
+  document.querySelectorAll('[data-save-working-state]').forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      saveWorkingState(btn.dataset.saveWorkingState).catch((err) => alert(String(err)));
+    };
+  });
+  document.querySelectorAll('[data-restore-working-state]').forEach((btn) => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      restoreWorkingState(btn.dataset.restoreWorkingState).catch((err) => alert(String(err)));
     };
   });
 }
@@ -259,6 +295,7 @@ document.getElementById('menuToggle')?.addEventListener('click', () => toggleMen
 document.getElementById('closeMenuBtn')?.addEventListener('click', () => toggleMenu(false));
 document.getElementById('drawerBackdrop')?.addEventListener('click', () => toggleMenu(false));
 document.getElementById('menuRescanBtn')?.addEventListener('click', async () => { await apiJson('/api/control-center/marketplace/rescan', { method: 'POST' }); toggleMenu(false); await refreshSummary(); });
+document.getElementById('menuSyncWorkingStateBtn')?.addEventListener('click', async () => { await syncWorkingState(); toggleMenu(false); });
 document.getElementById('menuInstallAllBtn')?.addEventListener('click', async () => { await apiJson('/api/control-center/install-all', { method: 'POST' }); toggleMenu(false); await refreshSummary(); });
 document.getElementById('menuUpdateAllBtn')?.addEventListener('click', async () => { await apiJson('/api/control-center/update-all', { method: 'POST' }); toggleMenu(false); await refreshSummary(); });
 document.getElementById('menuSelfHealBtn')?.addEventListener('click', async () => { await triggerSelfHeal(); toggleMenu(false); });

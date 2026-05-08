@@ -14,6 +14,7 @@ from homelab_os.core.services.network_stack import NetworkStackService
 from homelab_os.core.services.reverse_proxy import ReverseProxyService
 from homelab_os.core.services.systemd_service import CoreServiceManager
 from homelab_os.core.services.recovery import RecoveryService
+from homelab_os.core.services.working_state import PluginWorkingStateService
 from homelab_os.core.services.watchdog import WatchdogService
 from homelab_os.core.plugin_manager.registry import PluginRegistry
 from homelab_os.core.services.app_catalog import load_app_catalog
@@ -147,8 +148,8 @@ def build_all_plugins(env_file: str = '.env') -> None:
 def install_plugin(plugin_archive: Path, env_file: str = '.env') -> None:
     """Install a plugin archive AND start it immediately.
 
-    Identical behaviour to clicking Install in the Control Center GUI —
-    no separate start-plugin call required.
+    If the new code installs but fails to start, restore the last-known-good
+    plugin code snapshot instead of uninstalling the plugin or deleting data.
     """
     settings, job_store, logger = _job_services(env_file)
     installer = PluginInstaller(
@@ -162,28 +163,46 @@ def install_plugin(plugin_archive: Path, env_file: str = '.env') -> None:
         settings.manifests_dir / 'plugin_state.json',
         settings=settings,
     )
+    registry = PluginRegistry(settings.manifests_dir / 'installed_plugins.json')
+    working_state = PluginWorkingStateService(settings, registry)
     job = job_store.create_job('install_plugin', str(plugin_archive), {'archive': str(plugin_archive), 'auto_start': True})
     logger.append_job_log(job['job_id'], f'Starting install for {plugin_archive}')
     try:
         job_store.update_job(job['job_id'], status='running', progress=10)
         result = installer.install_plugin(plugin_archive)
         plugin_id = result['id']
-        logger.append_job_log(job['job_id'], f"Installed plugin: {result['name']} ({result['version']})")
+        logger.append_job_log(job['job_id'], f"Installed plugin code: {result['name']} ({result['version']})")
         logger.append_job_log(job['job_id'], f"Installed dir: {result['installed_dir']}")
 
         # Auto-start — same as CC GUI install flow
         job_store.update_job(job['job_id'], status='running', progress=70)
         logger.append_job_log(job['job_id'], f'Auto-starting {plugin_id}')
-        start_result = runtime.start_plugin(plugin_id)
-        logger.append_job_log(job['job_id'], f'Started: {start_result}')
-        result['start_result'] = start_result
+        try:
+            start_result = runtime.start_plugin(plugin_id)
+            logger.append_job_log(job['job_id'], f'Started: {start_result}')
+            result['start_result'] = start_result
+        except Exception as start_exc:  # noqa: BLE001
+            logger.append_job_log(job['job_id'], f'Start failed after install: {start_exc}')
+            job_store.update_job(job['job_id'], status='running', progress=82, message='Restoring last-known-good plugin state')
+            restore_result = working_state.restore_plugin(plugin_id)
+            logger.append_job_log(job['job_id'], f'Restored working state: {restore_result}')
+            retry_result = runtime.start_plugin(plugin_id)
+            logger.append_job_log(job['job_id'], f'Started restored plugin: {retry_result}')
+            result['rolled_back_to_working_state'] = True
+            result['rollback_result'] = restore_result
+            result['start_result'] = retry_result
 
         if result.get('public_url'):
             logger.append_job_log(job['job_id'], f"Open URL: {result['public_url']}")
 
-        job_store.update_job(job['job_id'], status='completed', progress=100, result=result)
-        typer.echo(f"Installed: {result['name']} ({result['version']})")
+        message = 'Plugin installed and started'
+        if result.get('rolled_back_to_working_state'):
+            message = 'New install failed; restored last-known-good version'
+        job_store.update_job(job['job_id'], status='completed', progress=100, result=result, message=message)
+        typer.echo(f"Installed request processed: {result['name']} ({result['version']})")
         typer.echo(f"Started:   {plugin_id}")
+        if result.get('rolled_back_to_working_state'):
+            typer.echo('Rollback:  restored last-known-good plugin state')
         if result.get('public_url'):
             typer.echo(f"Open URL:  {result['public_url']}")
         typer.echo(f"Job ID:    {job['job_id']}")
@@ -376,6 +395,46 @@ def self_heal(env_file: str = '.env') -> None:
         logger.append_job_log(job['job_id'], f'Self-heal failed: {exc}')
         job_store.update_job(job['job_id'], status='failed', progress=100, error=str(exc))
         raise
+
+
+@app.command('sync-working-state')
+def sync_working_state(env_file: str = '.env', healthy_only: bool = True) -> None:
+    """Save snapshots for currently running plugins.
+
+    The watchdog calls this periodically so self-heal restores the latest stable
+    plugin code instead of falling back to old bundles.
+    """
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+    registry = PluginRegistry(settings.manifests_dir / 'installed_plugins.json')
+    service = PluginWorkingStateService(settings, registry)
+    result = service.capture_running_plugins(healthy_only=healthy_only, reason='cli-sync-working-state')
+    typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+@app.command('restore-working-state')
+def restore_working_state(plugin_id: str, env_file: str = '.env', start: bool = True) -> None:
+    """Restore one plugin from its last-known-good code snapshot."""
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+    registry = PluginRegistry(settings.manifests_dir / 'installed_plugins.json')
+    service = PluginWorkingStateService(settings, registry)
+    result = service.restore_plugin(plugin_id)
+    typer.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    if start:
+        runtime = PluginRuntime(settings.runtime_installed_plugins_dir, settings.manifests_dir / 'plugin_state.json', settings=settings)
+        start_result = runtime.start_plugin(plugin_id)
+        typer.echo(json.dumps(start_result, indent=2, ensure_ascii=False))
+
+
+@app.command('list-working-state')
+def list_working_state(env_file: str = '.env') -> None:
+    """Show saved last-known-good plugin snapshots."""
+    settings = load_settings(env_file)
+    ensure_runtime_dirs(settings)
+    registry = PluginRegistry(settings.manifests_dir / 'installed_plugins.json')
+    states = PluginWorkingStateService(settings, registry).list_states()
+    typer.echo(json.dumps(states, indent=2, ensure_ascii=False))
 
 
 if __name__ == '__main__':

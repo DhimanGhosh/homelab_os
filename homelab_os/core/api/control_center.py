@@ -20,6 +20,7 @@ from homelab_os.core.services.jobs import JobStore
 from homelab_os.core.services.logging_service import LoggingService
 from homelab_os.core.services.reverse_proxy import ReverseProxyService
 from homelab_os.core.services.recovery import RecoveryService
+from homelab_os.core.services.working_state import PluginWorkingStateService
 
 router = APIRouter()
 
@@ -155,6 +156,7 @@ def _catalog_with_runtime():
     bundle_groups = _bundle_groups(settings)
     state_payload = _load_state_payload(settings)
     app_catalog = load_app_catalog(str(settings.app_catalog_file))
+    working_states = PluginWorkingStateService(settings, registry).list_states()
 
     visible_ids = (set(installed.keys()) | set(bundle_groups.keys())) - {"control-center"}
 
@@ -171,6 +173,8 @@ def _catalog_with_runtime():
             installed_meta and latest_bundle and _version_key(latest_version) > _version_key(installed_version)
         )
 
+        working_state = working_states.get(app_id, {})
+
         catalog.append({
             "id": app_id,
             "name": _app_name(app_id, installed_meta, catalog_meta),
@@ -184,6 +188,9 @@ def _catalog_with_runtime():
             "status": plugin_state.get("status", "stopped" if installed_meta else "not-installed"),
             "latest_bundle_filename": latest_bundle.get("filename") if latest_bundle else None,
             "update_available": update_available,
+            "working_state_version": working_state.get("version"),
+            "working_state_created_at": working_state.get("created_at"),
+            "working_state_snapshot_id": working_state.get("snapshot_id"),
         })
 
     return settings, catalog, jobs
@@ -212,32 +219,99 @@ def control_center_summary() -> dict:
     }
 
 
-def _install_job(job_id: str, archive_path: str, auto_start: bool = False) -> None:
+def _install_archive_safely(job_id: str, archive_path: str, auto_start: bool = False) -> dict:
     settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    working_state = PluginWorkingStateService(settings, registry)
+    result: dict = {}
     try:
-        jobs.update_job(job_id, status="running", progress=10)
+        jobs.update_job(job_id, status="running", progress=10, message="Installing plugin code")
         logs.append_job_log(job_id, f"Installing plugin from {archive_path}")
         result = installer.install_plugin(Path(archive_path))
-        logs.append_job_log(job_id, f"Installed plugin: {result['name']} ({result['version']})")
+        plugin_id = result["id"]
+        logs.append_job_log(job_id, f"Installed plugin code: {result['name']} ({result['version']})")
         if result.get("public_url"):
             logs.append_job_log(job_id, f"Open URL: {result['public_url']}")
-        if auto_start:
-            plugin_id = result["id"]
-            jobs.update_job(job_id, progress=70)
-            logs.append_job_log(job_id, f"Auto-starting plugin {plugin_id}")
+
+        if not auto_start:
+            jobs.update_job(job_id, status="completed", progress=100, result=result, message="Plugin installed")
+            return result
+
+        jobs.update_job(job_id, status="running", progress=70, message=f"Starting {plugin_id}")
+        logs.append_job_log(job_id, f"Auto-starting plugin {plugin_id}")
+        try:
             start_result = runtime.start_plugin(plugin_id)
             logs.append_job_log(job_id, f"Start result: {start_result}")
             result["start_result"] = start_result
-        jobs.update_job(job_id, status="completed", progress=100, result=result)
+            jobs.update_job(job_id, status="completed", progress=100, result=result, message="Plugin installed and started")
+            return result
+        except Exception as start_exc:  # noqa: BLE001
+            # Never call uninstall_plugin() here. A failed start after a code
+            # update must restore the last-known-good code snapshot instead of
+            # deleting the plugin and its NAS data.
+            logs.append_job_log(job_id, f"Start failed after install: {start_exc}")
+            jobs.update_job(job_id, status="running", progress=82, message="Start failed; restoring last-known-good plugin state")
+            try:
+                restore_result = working_state.restore_plugin(plugin_id)
+                logs.append_job_log(job_id, f"Restored working state: {restore_result}")
+                retry_result = runtime.start_plugin(plugin_id)
+                logs.append_job_log(job_id, f"Started restored plugin: {retry_result}")
+                result["rolled_back_to_working_state"] = True
+                result["rollback_result"] = restore_result
+                result["start_result"] = retry_result
+                jobs.update_job(
+                    job_id,
+                    status="completed",
+                    progress=100,
+                    result=result,
+                    message="New install failed to start; restored last-known-good version",
+                )
+                return result
+            except Exception as rollback_exc:  # noqa: BLE001
+                logs.append_job_log(job_id, f"Working-state restore failed: {rollback_exc}")
+                raise RuntimeError(f"Install start failed ({start_exc}); restore also failed ({rollback_exc})") from rollback_exc
     except Exception as exc:
         logs.append_job_log(job_id, f"Install failed: {exc}")
+        jobs.update_job(job_id, status="failed", progress=100, error=str(exc), result=result or None, message="Install failed")
+        raise
+
+
+def _install_job(job_id: str, archive_path: str, auto_start: bool = False) -> None:
+    try:
+        _install_archive_safely(job_id, archive_path, auto_start)
+    except Exception:
+        # _install_archive_safely already logs and marks the job as failed.
+        return
+
+
+def _install_batch_job(job_id: str, archives: list[dict]) -> None:
+    settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    total = max(len(archives), 1)
+    results = []
+    failures = []
+    logs.append_job_log(job_id, f"Starting sequential batch install for {len(archives)} plugin(s)")
+    for index, item in enumerate(archives, start=1):
+        archive_path = item["path"]
+        app_id = item.get("app_id") or Path(archive_path).name
+        progress = 5 + int(((index - 1) / total) * 90)
+        jobs.update_job(job_id, status="running", progress=progress, message=f"Installing {app_id} ({index}/{total})")
+        logs.append_job_log(job_id, f"[{index}/{total}] Installing {app_id} from {archive_path}")
+        child_job = jobs.create_job("install_plugin", archive_path, {"archive": archive_path, "app_id": app_id, "auto_start": True, "parent_job_id": job_id})
         try:
-            if 'result' in locals() and auto_start and result.get("id"):
-                logs.append_job_log(job_id, f"Rolling back failed install for {result['id']}")
-                installer.uninstall_plugin(result["id"])
-        except Exception as rollback_exc:
-            logs.append_job_log(job_id, f"Rollback failed: {rollback_exc}")
-        jobs.update_job(job_id, status="failed", progress=100, error=str(exc))
+            result = _install_archive_safely(child_job["job_id"], archive_path, True)
+            results.append({"app_id": app_id, "ok": True, "result": result})
+            logs.append_job_log(job_id, f"[{index}/{total}] OK: {app_id}")
+        except Exception as exc:  # noqa: BLE001
+            failures.append({"app_id": app_id, "archive": archive_path, "error": str(exc)})
+            logs.append_job_log(job_id, f"[{index}/{total}] FAILED: {app_id}: {exc}")
+    status = "completed" if not failures else "failed"
+    jobs.update_job(
+        job_id,
+        status=status,
+        progress=100,
+        result={"installed": results, "failures": failures},
+        error=(f"{len(failures)} plugin(s) failed" if failures else None),
+        message="Batch install finished" if not failures else "Batch install finished with failures",
+    )
 
 
 @router.post("/control-center/device/restart")
@@ -311,31 +385,31 @@ def rescan_marketplace() -> dict:
 @router.post("/control-center/install-all")
 def install_all(background_tasks: BackgroundTasks) -> dict:
     settings, registry, jobs, logs, runtime, installer, proxy = _services()
-    count = 0
+    archives = []
     for app_id, bundles in _bundle_groups(settings).items():
         if app_id == "control-center" or not bundles:
             continue
         bundle = bundles[0]
-        job = jobs.create_job("install_plugin", bundle["path"], {"archive": bundle["path"], "app_id": app_id, "auto_start": True})
-        logs.append_job_log(job["job_id"], f"Queued install for {bundle['filename']}")
-        background_tasks.add_task(_install_job, job["job_id"], bundle["path"], True)
-        count += 1
-    return {"ok": True, "queued": count}
+        archives.append({"app_id": app_id, "path": bundle["path"]})
+    job = jobs.create_job("install_all_plugins", "all", {"archives": archives, "mode": "sequential"})
+    logs.append_job_log(job["job_id"], f"Queued sequential install-all for {len(archives)} plugin(s)")
+    background_tasks.add_task(_install_batch_job, job["job_id"], archives)
+    return {"ok": True, "queued": len(archives), "job_id": job["job_id"]}
 
 
 @router.post("/control-center/update-all")
 def update_all(background_tasks: BackgroundTasks) -> dict:
     settings, catalog, jobs = _catalog_with_runtime()
     logs = LoggingService(settings.runtime_jobs_dir)
-    count = 0
+    archives = []
     for app in catalog:
         if app.get("installed") and app.get("update_available") and app.get("latest_bundle_filename"):
             archive = settings.build_dir / app["latest_bundle_filename"]
-            job = jobs.create_job("install_plugin", str(archive), {"archive": str(archive), "app_id": app["id"], "auto_start": True})
-            logs.append_job_log(job["job_id"], f"Queued update for {app['id']} -> {app['latest_bundle_filename']}")
-            background_tasks.add_task(_install_job, job["job_id"], str(archive), True)
-            count += 1
-    return {"ok": True, "queued": count}
+            archives.append({"app_id": app["id"], "path": str(archive)})
+    job = jobs.create_job("update_all_plugins", "all", {"archives": archives, "mode": "sequential"})
+    logs.append_job_log(job["job_id"], f"Queued sequential update-all for {len(archives)} plugin(s)")
+    background_tasks.add_task(_install_batch_job, job["job_id"], archives)
+    return {"ok": True, "queued": len(archives), "job_id": job["job_id"]}
 
 
 def _runtime_job(job_id: str, action: str, plugin_id: str) -> None:
@@ -398,6 +472,50 @@ def trigger_self_heal(background_tasks: BackgroundTasks) -> dict:
     job = jobs.create_job("self_heal", "host", {"source": "control_center"})
     logs.append_job_log(job["job_id"], "Queued self-heal from Control Center")
     background_tasks.add_task(_self_heal_job, job["job_id"])
+    return {"job_id": job["job_id"]}
+
+
+@router.get("/control-center/working-state")
+def get_working_state() -> dict:
+    settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    return {"plugins": PluginWorkingStateService(settings, registry).list_states()}
+
+
+@router.post("/control-center/working-state/sync")
+def sync_working_state() -> dict:
+    settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    result = PluginWorkingStateService(settings, registry).capture_running_plugins(healthy_only=True, reason="control-center-manual-sync")
+    return {"ok": True, "result": result}
+
+
+@router.post("/control-center/plugins/{plugin_id}/save-working-state")
+def save_plugin_working_state(plugin_id: str) -> dict:
+    settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    result = PluginWorkingStateService(settings, registry).capture_plugin(plugin_id, reason="control-center-manual-save", force=True)
+    return {"ok": True, "result": result}
+
+
+@router.post("/control-center/plugins/{plugin_id}/restore-working-state")
+def restore_plugin_working_state(plugin_id: str, background_tasks: BackgroundTasks) -> dict:
+    settings, registry, jobs, logs, runtime, installer, proxy = _services()
+    job = jobs.create_job("restore_working_state", plugin_id, {"plugin_id": plugin_id})
+    logs.append_job_log(job["job_id"], f"Queued restore-working-state for {plugin_id}")
+
+    def _restore_job() -> None:
+        settings, registry, jobs, logs, runtime, installer, proxy = _services()
+        try:
+            jobs.update_job(job["job_id"], status="running", progress=30, message="Restoring last-known-good code")
+            restore_result = PluginWorkingStateService(settings, registry).restore_plugin(plugin_id)
+            logs.append_job_log(job["job_id"], f"Restored: {restore_result}")
+            jobs.update_job(job["job_id"], status="running", progress=70, message="Starting restored plugin")
+            start_result = runtime.start_plugin(plugin_id)
+            logs.append_job_log(job["job_id"], f"Started: {start_result}")
+            jobs.update_job(job["job_id"], status="completed", progress=100, result={"restore": restore_result, "start": start_result})
+        except Exception as exc:  # noqa: BLE001
+            logs.append_job_log(job["job_id"], f"Restore failed: {exc}")
+            jobs.update_job(job["job_id"], status="failed", progress=100, error=str(exc))
+
+    background_tasks.add_task(_restore_job)
     return {"job_id": job["job_id"]}
 
 

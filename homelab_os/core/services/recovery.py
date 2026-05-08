@@ -9,6 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from homelab_os.core.services.working_state import PluginWorkingStateService
+
 
 LogFn = Callable[[str], None]
 ProgressFn = Callable[[int, str], None]
@@ -51,11 +53,16 @@ class RecoveryService:
             "started_plugins": [],
             "timed_out_plugins": [],
             "warnings": [],
+            "restored_plugins": [],
+            "working_state_sync": {},
             "pihole": None,
         }
 
         self.progress(5, "Starting self-heal")
         summary["docker_root_changed"] = self._ensure_docker_root()
+
+        self.progress(8, "Saving current running plugin state")
+        summary["working_state_sync"] = self._sync_working_state()
 
         self.progress(12, "Checking Docker health")
         if self._docker_needs_repair():
@@ -91,7 +98,9 @@ class RecoveryService:
                 summary["timed_out_plugins"].append(plugin_id)
                 summary["warnings"].append(warning)
                 self.log(warning)
-                continue
+                restored = self._restore_working_state_and_retry(plugin_id, summary)
+                if restored:
+                    continue
             except subprocess.CalledProcessError as exc:
                 handled = self._try_auto_recover_plugin(plugin_id, exc)
                 if handled:
@@ -119,15 +128,55 @@ class RecoveryService:
                     warning = self._format_called_process_error(plugin_id, exc)
                     summary["warnings"].append(warning)
                     self.log(warning)
+                restored = self._restore_working_state_and_retry(plugin_id, summary)
+                if restored:
+                    continue
             except Exception as exc:  # noqa: BLE001
                 warning = f"{plugin_id}: {exc}"
                 summary["warnings"].append(warning)
                 self.log(warning)
+                restored = self._restore_working_state_and_retry(plugin_id, summary)
+                if restored:
+                    continue
 
         self.progress(90, "Checking Pi-hole health")
         summary["pihole"] = self._check_and_fix_pihole()
         self.progress(100, "Self-heal completed")
         return summary
+
+    def _sync_working_state(self) -> dict[str, Any]:
+        try:
+            return PluginWorkingStateService(self.settings, self.plugin_registry).capture_running_plugins(
+                healthy_only=True,
+                reason="self-heal-preflight",
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"Working-state sync skipped: {exc}")
+            return {"ok": False, "error": str(exc)}
+
+    def _restore_working_state_and_retry(self, plugin_id: str, summary: dict[str, Any]) -> bool:
+        try:
+            working_state = PluginWorkingStateService(self.settings, self.plugin_registry)
+            restore_result = working_state.restore_plugin(plugin_id)
+            self.log(f"Restored {plugin_id} from last-known-good state: {restore_result}")
+            result = self.plugin_runtime.start_plugin(
+                plugin_id,
+                timeout=self.plugin_start_timeout_seconds,
+            )
+            summary["restored_plugins"].append(
+                {
+                    "plugin_id": plugin_id,
+                    "restore": restore_result,
+                    "public_url": result.get("public_url"),
+                }
+            )
+            self.log(f"Recovered plugin {plugin_id} after working-state restore")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            warning = f"{plugin_id}: working-state restore/retry failed: {exc}"
+            summary["warnings"].append(warning)
+            self.log(warning)
+            return False
 
     def _format_called_process_error(self, plugin_id: str, exc: subprocess.CalledProcessError) -> str:
         parts = [f"{plugin_id}: command failed"]
@@ -272,7 +321,8 @@ class RecoveryService:
             plugin = self.plugin_registry.get_plugin(plugin_id)
             if not plugin:
                 continue
-            internal_port = plugin.get("internal_port") or plugin.get("port")
+            network = plugin.get("network", {}) or {}
+            internal_port = network.get("internal_port") or plugin.get("internal_port") or plugin.get("port")
             if not internal_port:
                 public_url = plugin.get("public_url")
                 if public_url:
