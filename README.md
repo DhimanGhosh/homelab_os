@@ -1,6 +1,6 @@
 # Homelab OS
 
-**Version 3.2.0** · Plugin-based Raspberry Pi homelab control platform · Python ≥ 3.11
+**Version 3.2.1** · Plugin-based Raspberry Pi homelab control platform · Python ≥ 3.11
 
 Homelab OS turns a Raspberry Pi into a personal cloud and application platform. A single bootstrap command sets up the entire system. Each app runs as an isolated Docker container managed through a unified Control Center dashboard or the `homelabctl` CLI. All services are exposed securely over HTTPS via Tailscale — no port forwarding required.
 
@@ -231,7 +231,6 @@ homelabctl reconcile-routes --env-file .env
 | Media Downloader | `link-downloader` | 8460 | `https://<fqdn>:8460/` |
 | Song Downloader | `song-downloader` | 8445 | `https://<fqdn>:8445/` |
 | Files | `files` | 8449 | `https://<fqdn>:8449/` |
-| Expense Tracker | `expense-tracker` | 8461 | `https://<fqdn>:8461/` |
 
 Replace `<fqdn>` with your `TAILSCALE_FQDN` value (e.g. `pi-nas.taild4713b.ts.net`).
 

@@ -3,13 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
 from homelab_os.core.plugin_manager.registry import PluginRegistry
 from homelab_os.core.services.state_store import StateStore
+from homelab_os.core.services.container_resolver import DockerContainerResolver
 
 
 class PluginWorkingStateService:
@@ -29,6 +29,7 @@ class PluginWorkingStateService:
         self.base_dir = settings.backups_dir / "plugin-working-state"
         self.snapshots_dir = self.base_dir / "snapshots"
         self.index_file = self.base_dir / "working_state.json"
+        self.container_resolver = DockerContainerResolver(settings, self.registry)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.snapshots_dir.mkdir(parents=True, exist_ok=True)
         if not self.index_file.exists():
@@ -86,6 +87,9 @@ class PluginWorkingStateService:
     def latest_for(self, plugin_id: str) -> dict[str, Any] | None:
         return self.list_states().get(plugin_id)
 
+    def resolve_container(self, plugin_id: str) -> dict[str, Any]:
+        return self.container_resolver.resolve_plugin(plugin_id)
+
     def capture_plugin(self, plugin_id: str, *, reason: str = "manual", force: bool = False) -> dict[str, Any]:
         plugin = self.registry.get_plugin(plugin_id)
         if not plugin:
@@ -100,11 +104,15 @@ class PluginWorkingStateService:
 
         version = str(plugin.get("version") or "unknown")
         code_hash = self._directory_digest(plugin_dir)
+        container_info = self.resolve_container(plugin_id)
         index = self._read_index()
         latest = index.setdefault("plugins", {}).get(plugin_id)
         if latest and latest.get("code_hash") == code_hash and not force:
             latest["last_checked_at"] = self._now()
             latest["last_reason"] = reason
+            latest["container"] = container_info
+            latest["container_name"] = container_info.get("container_name")
+            latest["container_health_source"] = container_info.get("health_source")
             self._write_index(index)
             return {"ok": True, "changed": False, "plugin_id": plugin_id, "snapshot": latest}
 
@@ -127,6 +135,9 @@ class PluginWorkingStateService:
             "snapshot_dir": str(target),
             "code_dir": str(target / "code"),
             "registry_entry": plugin,
+            "container": container_info,
+            "container_name": container_info.get("container_name"),
+            "container_health_source": container_info.get("health_source"),
         }
         (target / "metadata.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
         index["plugins"][plugin_id] = metadata
@@ -135,33 +146,28 @@ class PluginWorkingStateService:
         return {"ok": True, "changed": True, "plugin_id": plugin_id, "snapshot": metadata}
 
 
-    def _container_is_running(self, plugin_id: str) -> bool:
-        try:
-            result = subprocess.run(
-                ["docker", "inspect", "-f", "{{.State.Running}}", plugin_id],
-                capture_output=True,
-                text=True,
-                timeout=8,
-                check=False,
-            )
-            return result.returncode == 0 and result.stdout.strip().lower() == "true"
-        except Exception:
-            return False
     def capture_running_plugins(self, *, healthy_only: bool = True, reason: str = "periodic") -> dict[str, Any]:
         states = self.state_store.get_all_plugin_states()
         results: dict[str, Any] = {}
         for plugin_id in sorted(self.registry.list_all().keys()):
             plugin_state = states.get(plugin_id, {})
-            if healthy_only and plugin_state.get("status") != "running":
-                results[plugin_id] = {"ok": False, "skipped": True, "reason": "plugin state is not running"}
-                continue
-            if healthy_only and not self._container_is_running(plugin_id):
-                results[plugin_id] = {"ok": False, "skipped": True, "reason": "container is not currently running"}
+            container_info = self.resolve_container(plugin_id)
+            if healthy_only and not container_info.get("running"):
+                results[plugin_id] = {
+                    "ok": False,
+                    "skipped": True,
+                    "reason": "container is not currently running",
+                    "state_status": plugin_state.get("status"),
+                    "container": container_info,
+                }
                 continue
             try:
-                results[plugin_id] = self.capture_plugin(plugin_id, reason=reason)
+                result = self.capture_plugin(plugin_id, reason=reason)
+                result["state_status"] = plugin_state.get("status")
+                result["container"] = container_info
+                results[plugin_id] = result
             except Exception as exc:  # noqa: BLE001
-                results[plugin_id] = {"ok": False, "error": str(exc)}
+                results[plugin_id] = {"ok": False, "error": str(exc), "container": container_info}
         return results
 
     def restore_plugin(self, plugin_id: str) -> dict[str, Any]:

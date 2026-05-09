@@ -68,6 +68,10 @@ function appCard(app) {
   const installed = app.installed;
   const canOpen = installed && app.public_url;
   const status = app.status || 'stopped';
+  const containerName = app.container_name || app.container?.container_name || '';
+  const containerHealth = app.container_health || app.container?.health || '';
+  const healthSource = app.health_source || app.container?.health_source || '';
+  const containerSource = app.container_source || app.container?.source || '';
   const updateAvailable = !!app.update_available;
   const latestBundle = app.latest_bundle_filename || '';
   const isOpen = openBundleId === app.id;
@@ -119,6 +123,8 @@ function appCard(app) {
       <div class="meta-line">Installed: ${esc(app.installed_version || '—')}</div>
       <div class="meta-line">Latest: ${esc(app.latest_version || '—')}${updateAvailable ? ' <span class="tiny" style="color:#8f84ff">update available</span>' : ''}</div>
       <div class="meta-line">Working state: ${app.working_state_version ? `v${esc(app.working_state_version)}${app.working_state_created_at ? ' · ' + esc(app.working_state_created_at) : ''}` : 'not saved yet'}</div>
+      <div class="meta-line">Container: ${containerName ? esc(containerName) : '—'}${containerSource ? ` <span class="tiny muted">(${esc(containerSource)})</span>` : ''}</div>
+      <div class="meta-line">Health source: ${healthSource ? esc(healthSource) : '—'}${containerHealth ? ` · ${esc(containerHealth)}` : ''}</div>
       <div class="meta-line">Port: ${esc(app.port || '—')}</div>
       <div class="meta-line">URL: ${installed && app.public_url ? `<a class="inline-link" href="${esc(app.public_url)}" target="_blank">${esc(app.public_url)}</a>` : '—'}</div>
       <div class="actions">${openBtn}${actionBtns}</div>
@@ -131,7 +137,7 @@ function appCard(app) {
 
 function renderApps() {
   const area = document.getElementById('appsArea');
-  const apps = (state.apps || []).filter((app) => matchesSearch([app.name, app.id, app.latest_version, app.installed_version, app.port].join(' ')));
+  const apps = (state.apps || []).filter((app) => matchesSearch([app.name, app.id, app.latest_version, app.installed_version, app.port, app.container_name, app.health_source].join(' ')));
   area.innerHTML = apps.length ? apps.map(appCard).join('') : '<div class="muted">No apps matched your search.</div>';
   wireAppButtons();
   wireBundleDetailsBehavior();

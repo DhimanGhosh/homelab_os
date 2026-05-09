@@ -174,7 +174,6 @@ def install_plugin(plugin_archive: Path, env_file: str = '.env') -> None:
         logger.append_job_log(job['job_id'], f"Installed plugin code: {result['name']} ({result['version']})")
         logger.append_job_log(job['job_id'], f"Installed dir: {result['installed_dir']}")
 
-        # Auto-start — same as CC GUI install flow
         job_store.update_job(job['job_id'], status='running', progress=70)
         logger.append_job_log(job['job_id'], f'Auto-starting {plugin_id}')
         try:
@@ -183,14 +182,35 @@ def install_plugin(plugin_archive: Path, env_file: str = '.env') -> None:
             result['start_result'] = start_result
         except Exception as start_exc:  # noqa: BLE001
             logger.append_job_log(job['job_id'], f'Start failed after install: {start_exc}')
+            result['start_error'] = str(start_exc)
+            latest_snapshot = working_state.latest_for(plugin_id)
+            if not latest_snapshot:
+                message = (
+                    f"Plugin '{plugin_id}' installed, but start failed and no last-known-good "
+                    "snapshot exists yet. Fix the Docker/start issue, then run start-plugin or reinstall."
+                )
+                logger.append_job_log(job['job_id'], message)
+                job_store.update_job(job['job_id'], status='failed', progress=100, result=result, error=message, message=message)
+                typer.echo(message)
+                typer.echo(f"Job ID:    {job['job_id']}")
+                raise typer.Exit(code=1)
+
             job_store.update_job(job['job_id'], status='running', progress=82, message='Restoring last-known-good plugin state')
-            restore_result = working_state.restore_plugin(plugin_id)
-            logger.append_job_log(job['job_id'], f'Restored working state: {restore_result}')
-            retry_result = runtime.start_plugin(plugin_id)
-            logger.append_job_log(job['job_id'], f'Started restored plugin: {retry_result}')
-            result['rolled_back_to_working_state'] = True
-            result['rollback_result'] = restore_result
-            result['start_result'] = retry_result
+            try:
+                restore_result = working_state.restore_plugin(plugin_id)
+                logger.append_job_log(job['job_id'], f'Restored working state: {restore_result}')
+                retry_result = runtime.start_plugin(plugin_id)
+                logger.append_job_log(job['job_id'], f'Started restored plugin: {retry_result}')
+                result['rolled_back_to_working_state'] = True
+                result['rollback_result'] = restore_result
+                result['start_result'] = retry_result
+            except Exception as rollback_exc:  # noqa: BLE001
+                message = f"Plugin '{plugin_id}' start failed and working-state restore also failed: {rollback_exc}"
+                logger.append_job_log(job['job_id'], message)
+                job_store.update_job(job['job_id'], status='failed', progress=100, result=result, error=message, message=message)
+                typer.echo(message)
+                typer.echo(f"Job ID:    {job['job_id']}")
+                raise typer.Exit(code=1)
 
         if result.get('public_url'):
             logger.append_job_log(job['job_id'], f"Open URL: {result['public_url']}")
@@ -206,6 +226,8 @@ def install_plugin(plugin_archive: Path, env_file: str = '.env') -> None:
         if result.get('public_url'):
             typer.echo(f"Open URL:  {result['public_url']}")
         typer.echo(f"Job ID:    {job['job_id']}")
+    except typer.Exit:
+        raise
     except Exception as exc:
         logger.append_job_log(job['job_id'], f'Install/start failed: {exc}')
         job_store.update_job(job['job_id'], status='failed', progress=100, error=str(exc))

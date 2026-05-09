@@ -21,6 +21,7 @@ from homelab_os.core.services.logging_service import LoggingService
 from homelab_os.core.services.reverse_proxy import ReverseProxyService
 from homelab_os.core.services.recovery import RecoveryService
 from homelab_os.core.services.working_state import PluginWorkingStateService
+from homelab_os.core.services.container_resolver import DockerContainerResolver
 
 router = APIRouter()
 
@@ -156,7 +157,9 @@ def _catalog_with_runtime():
     bundle_groups = _bundle_groups(settings)
     state_payload = _load_state_payload(settings)
     app_catalog = load_app_catalog(str(settings.app_catalog_file))
-    working_states = PluginWorkingStateService(settings, registry).list_states()
+    working_state_service = PluginWorkingStateService(settings, registry)
+    working_states = working_state_service.list_states()
+    container_resolver = DockerContainerResolver(settings, registry)
 
     visible_ids = (set(installed.keys()) | set(bundle_groups.keys())) - {"control-center"}
 
@@ -174,6 +177,8 @@ def _catalog_with_runtime():
         )
 
         working_state = working_states.get(app_id, {})
+        container_info = container_resolver.resolve_plugin(app_id) if installed_meta else {"found": False, "running": False}
+        runtime_status = "running" if container_info.get("running") else plugin_state.get("status", "stopped" if installed_meta else "not-installed")
 
         catalog.append({
             "id": app_id,
@@ -185,7 +190,14 @@ def _catalog_with_runtime():
             "port": _app_port(app_id, settings, catalog_meta),
             "bundles": bundles,
             "bundle_count": len(bundles),
-            "status": plugin_state.get("status", "stopped" if installed_meta else "not-installed"),
+            "status": runtime_status,
+            "state_status": plugin_state.get("status"),
+            "container": container_info,
+            "container_name": container_info.get("container_name"),
+            "container_status": container_info.get("status"),
+            "container_health": container_info.get("health"),
+            "health_source": container_info.get("health_source"),
+            "container_source": container_info.get("source"),
             "latest_bundle_filename": latest_bundle.get("filename") if latest_bundle else None,
             "update_available": update_available,
             "working_state_version": working_state.get("version"),
@@ -249,6 +261,17 @@ def _install_archive_safely(job_id: str, archive_path: str, auto_start: bool = F
             # update must restore the last-known-good code snapshot instead of
             # deleting the plugin and its NAS data.
             logs.append_job_log(job_id, f"Start failed after install: {start_exc}")
+            result["start_error"] = str(start_exc)
+            latest_snapshot = working_state.latest_for(plugin_id)
+            if not latest_snapshot:
+                message = (
+                    f"Plugin '{plugin_id}' installed, but start failed and no last-known-good "
+                    "snapshot exists yet. Fix the Docker/start issue, then run start-plugin or reinstall."
+                )
+                logs.append_job_log(job_id, message)
+                jobs.update_job(job_id, status="failed", progress=100, result=result, error=message, message=message)
+                raise RuntimeError(message) from start_exc
+
             jobs.update_job(job_id, status="running", progress=82, message="Start failed; restoring last-known-good plugin state")
             try:
                 restore_result = working_state.restore_plugin(plugin_id)
@@ -267,8 +290,10 @@ def _install_archive_safely(job_id: str, archive_path: str, auto_start: bool = F
                 )
                 return result
             except Exception as rollback_exc:  # noqa: BLE001
-                logs.append_job_log(job_id, f"Working-state restore failed: {rollback_exc}")
-                raise RuntimeError(f"Install start failed ({start_exc}); restore also failed ({rollback_exc})") from rollback_exc
+                message = f"Install start failed ({start_exc}); working-state restore also failed ({rollback_exc})"
+                logs.append_job_log(job_id, message)
+                jobs.update_job(job_id, status="failed", progress=100, result=result, error=message, message="Install failed and restore failed")
+                raise RuntimeError(message) from rollback_exc
     except Exception as exc:
         logs.append_job_log(job_id, f"Install failed: {exc}")
         jobs.update_job(job_id, status="failed", progress=100, error=str(exc), result=result or None, message="Install failed")
